@@ -12,8 +12,15 @@ LOCAL_C_INCLUDES := \
 	frameworks/native/include/ui \
 	frameworks/native/include/utils \
 	frameworks/native/include/media/hardware \
-	$(LOCAL_PATH)/../../../../../gralloc/$(TARGET_BOARD_PLATFORM) \
-	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include/video 
+	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include/video
+
+ifeq ($(strip $(SOC_SCX35)),true)
+LOCAL_C_INCLUDES += \
+	$(LOCAL_PATH)/../../../../../gralloc/scx15
+else
+LOCAL_C_INCLUDES += \
+	$(LOCAL_PATH)/../../../../../gralloc/$(TARGET_BOARD_PLATFORM)
+endif
 
 LOCAL_ADDITIONAL_DEPENDENCIES += \
 	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr
@@ -21,6 +28,10 @@ LOCAL_ADDITIONAL_DEPENDENCIES += \
 LOCAL_CFLAGS := \
 	-DOSCL_EXPORT_REF= \
 	-DOSCL_IMPORT_REF=
+
+ifeq ($(strip $(SOC_SCX35)),true)
+LOCAL_CFLAGS += -DSOC_SCX35
+endif
 
 LOCAL_ARM_MODE := arm
 

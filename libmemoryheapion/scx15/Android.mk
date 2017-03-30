@@ -26,12 +26,17 @@ LOCAL_PROPRIETARY_MODULE := true
 LOCAL_SRC_FILES := \
 	MemoryHeapIon.cpp
 
-LOCAL_ADDITIONAL_DEPENDENCIES += \
-	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr
-
+# Force this specific version of ion.h for compilation
+ifeq ($(strip $(SOC_SCX35)),true)
+LOCAL_C_INCLUDES += \
+	$(LOCAL_PATH)/kernel-headers/
+else
 LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include \
 	$(TOP)/hardware/sprd/kernel_headers/$(TARGET_BOARD_PLATFORM)
+LOCAL_ADDITIONAL_DEPENDENCIES += \
+	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr
+endif
 
 ifdef ($(TARGET_BOARD_PLATFORM),sc8810)
 LOCAL_CFLAGS += -DSC8810_BOARD

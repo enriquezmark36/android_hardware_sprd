@@ -389,7 +389,12 @@ status_t SPRDAVCDecoder::initDecoder() {
     video_format.p_extra = NULL;
     video_format.p_extra_phy = 0;
     video_format.i_extra = 0;
+#ifdef SOC_SCX35
+    video_format.uv_interleaved = 1;
+#else
     video_format.yuv_format = YUV420SP_NV12;
+#endif
+
 
     if ((*mH264DecInit)(mHandle, &codec_buf,&video_format) != MMDEC_OK) {
         ALOGE("Failed to init AVCDEC");
@@ -1063,7 +1068,7 @@ void SPRDAVCDecoder::onQueueFilled(OMX_U32 portIndex) {
         MMDecRet ret;
         ret = (*mH264DecGetInfo)(mHandle, &decoderInfo);
         if(ret == MMDEC_OK) {
-#if 0
+#if SOC_SCX35
             if (!((decoderInfo.picWidth<= mMaxWidth&& decoderInfo.picHeight<= mMaxHeight)
                     || (decoderInfo.picWidth <= mMaxHeight && decoderInfo.picHeight <= mMaxWidth))) {
                 ALOGE("[%d,%d] is out of range [%d, %d], failed to support this format.",

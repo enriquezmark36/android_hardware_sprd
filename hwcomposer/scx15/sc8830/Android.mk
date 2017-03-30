@@ -37,8 +37,17 @@ LOCAL_SHARED_LIBRARIES := liblog
 LOCAL_SRC_FILES := \
 	gsp_hal.cpp \
 
+
+# Force scx15 on kanas/kanas3g
+ifeq ($(strip $(SOC_SCX35)),true)
 LOCAL_C_INCLUDES += \
-	$(LOCAL_PATH)/../../../gralloc/$(TARGET_BOARD_PLATFORM) \
+	$(LOCAL_PATH)/../../../gralloc/scx15
+else
+LOCAL_C_INCLUDES += \
+	$(LOCAL_PATH)/../../../gralloc/$(TARGET_BOARD_PLATFORM)
+endif
+
+LOCAL_C_INCLUDES += \
 	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include/video/ \
 	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include/ \
 	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/ \

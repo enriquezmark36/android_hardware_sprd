@@ -42,4 +42,8 @@ ifeq ($(strip $(TARGET_BOARD_CAMERA_ANTI_SHAKE)),true)
 LOCAL_CFLAGS += -DANTI_SHAKE
 endif
 
+ifeq ($(strip $(SOC_SCX35)),true)
+LOCAL_CFLAGS += -DSOC_SCX35
+endif
+
 include $(BUILD_SHARED_LIBRARY)

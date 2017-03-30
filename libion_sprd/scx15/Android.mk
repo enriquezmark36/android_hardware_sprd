@@ -23,16 +23,25 @@ LOCAL_MODULE := libion_sprd
 
 LOCAL_PROPRIETARY_MODULE := true
 
-LOCAL_ADDITIONAL_DEPENDENCIES += \
-	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr
-
 LOCAL_C_INCLUDES += \
 	$(LOCAL_PATH)/include \
 	$(LOCAL_PATH)/kernel-headers \
-	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include \
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
-	$(LOCAL_C_INCLUDES) \
+	$(LOCAL_C_INCLUDES)
+
+# Force this specific version of ion.h for compilation
+ifeq ($(strip $(SOC_SCX35)),true)
+LOCAL_C_INCLUDES += \
+	$(LOCAL_PATH)/kernel-headers/kanas
+else
+LOCAL_C_INCLUDES += \
+	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include
+LOCAL_EXPORT_C_INCLUDE_DIRS += \
+	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include
+LOCAL_ADDITIONAL_DEPENDENCIES += \
+	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr
+endif
 
 LOCAL_SRC_FILES := \
 	ion.c
@@ -53,13 +62,20 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE := iontest_sprd
 
-LOCAL_ADDITIONAL_DEPENDENCIES += \
-	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr
-
 LOCAL_C_INCLUDES += \
 	$(LOCAL_PATH)/include \
 	$(LOCAL_PATH)/kernel-headers \
-	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include
+
+# Force this specific version of ion.h
+# There are some different versions of ion.h, e.g Google's common kernel source
+# For now, this only has been tested on kanas.
+ifeq ($(strip $(SOC_SCX35)),true)
+LOCAL_C_INCLUDES += $(LOCAL_PATH)/kernel-headers/kanas
+else
+LOCAL_C_INCLUDES += $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include
+LOCAL_ADDITIONAL_DEPENDENCIES += \
+	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr
+endif
 
 LOCAL_SRC_FILES := \
 	ion.c \

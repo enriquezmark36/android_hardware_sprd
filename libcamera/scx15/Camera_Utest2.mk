@@ -12,6 +12,7 @@ sc8830like=1
 endif
 
 ifeq ($(strip $(sc8830like)),1)
+
 LOCAL_C_INCLUDES := \
 	$(LOCAL_PATH)/vsp/sc8830/inc	\
 	$(LOCAL_PATH)/vsp/sc8830/src \
@@ -28,7 +29,15 @@ LOCAL_C_INCLUDES := \
 	system/media/camera/include \
 	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include \
 	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/source/include \
-	hardware/sprd/gralloc/$(TARGET_BOARD_PLATFORM) \
+
+# Force scx15 version for kanas/kanas3g
+ifeq ($(strip $(SOC_SCX35)),true)
+LOCAL_C_INCLUDES += \
+	hardware/sprd/gralloc/scx15
+else
+LOCAL_C_INCLUDES += \
+	hardware/sprd/gralloc/$(TARGET_BOARD_PLATFORM)
+endif
 
 LOCAL_ADDITIONAL_DEPENDENCIES += \
 	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr \

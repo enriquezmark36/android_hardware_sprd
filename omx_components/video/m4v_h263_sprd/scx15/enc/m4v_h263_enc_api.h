@@ -98,7 +98,11 @@ typedef struct
     int32	frame_width;				//frame width
     int32	frame_height;				//frame Height
     int32	time_scale;
+#ifdef SOC_SCX35
+    int32	uv_interleaved;				//tmp add
+#else
     int32	yuv_format;
+#endif
     int32	b_anti_shake;
 } MMEncVideoInfo;
 

@@ -81,7 +81,11 @@ typedef struct
     int32	i_extra;
     void 	*p_extra;
     uint32	p_extra_phy;
+#ifdef SOC_SCX35
+    int32	uv_interleaved;
+#else
     int32	yuv_format;
+#endif
 } MMDecVideoFormat;
 
 // Decoder buffer for decoding structure

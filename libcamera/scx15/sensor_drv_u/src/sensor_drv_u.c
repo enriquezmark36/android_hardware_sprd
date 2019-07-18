@@ -148,8 +148,13 @@ LOCAL int _Sensor_Device_PowerDown(BOOLEAN power_level)
 {
 	int ret = SENSOR_SUCCESS;
 	SENSOR_DRV_CHECK_ZERO(s_p_sensor_cxt);
+#if defined(CONFIG_CAMERA_IOCTL_EXTRA_PARAMS)
+	uint32_t params[2] = {power_level, s_p_sensor_cxt->sensor_register_info.cur_id};
 
+	ret = xioctl(s_p_sensor_cxt->fd_sensor, SENSOR_IO_PD, &params);
+#else
 	ret = xioctl(s_p_sensor_cxt->fd_sensor, SENSOR_IO_PD, &power_level);
+#endif
 
 	if (0 != ret)
 	{
@@ -159,6 +164,27 @@ LOCAL int _Sensor_Device_PowerDown(BOOLEAN power_level)
 
 	return ret;
 }
+
+#if defined(CONFIG_CAMERA_IOCTL_IOCTL_HAS_POWER_ONOFF)
+/* This function is to set power OFF or ON */
+LOCAL int _Sensor_Device_PowerON(BOOLEAN power_on)
+{
+	int ret = SENSOR_SUCCESS;
+	SENSOR_DRV_CHECK_ZERO(s_p_sensor_cxt);
+
+	uint32_t power = power_on ? 1 : 0;
+
+	ret = ioctl(s_p_sensor_cxt->fd_sensor, SENSOR_IO_POWER_ONOFF, &power);
+
+	if (0 != ret)
+	{
+		CMR_LOGE("_Sensor_Device_PowerON failed,  power = %u, ret=%d \n", power, ret);
+		ret = -1;
+	}
+
+	return ret;
+}
+#endif
 
 LOCAL int _Sensor_Device_SetVoltageMonitor(uint32_t vdd_value)
 {
@@ -195,8 +221,14 @@ LOCAL int _Sensor_Device_SetVoltageDVDD(uint32_t vdd_value)
 {
 	int ret = SENSOR_SUCCESS;
 	SENSOR_DRV_CHECK_ZERO(s_p_sensor_cxt);
+#if defined(CONFIG_CAMERA_IOCTL_EXTRA_PARAMS)
+	uint32_t params[2] = {vdd_value, s_p_sensor_cxt->sensor_register_info.cur_id};
 
+	ret = xioctl(s_p_sensor_cxt->fd_sensor, SENSOR_IO_SET_DVDD, &params);
+#else
 	ret = xioctl(s_p_sensor_cxt->fd_sensor, SENSOR_IO_SET_DVDD, &vdd_value);
+#endif
+
 	if (0 != ret)
 	{
 		CMR_LOGE("_Sensor_Device_SetVoltageDVDD failed,  vdd_value = %d, ret=%d \n", vdd_value, ret);
@@ -469,6 +501,23 @@ LOCAL int _Sensor_Device_I2CWrite(SENSOR_I2C_T_PTR i2c_tab)
 	return ret;
 }
 
+#if defined(CONFIG_CAMERA_IOCTL_IOCTL_HAS_SET_FLASH)
+LOCAL int _Sensor_Device_Set_Flash(uint32_t flash_level)
+{
+	int ret = SENSOR_SUCCESS;
+	SENSOR_DRV_CHECK_ZERO(s_p_sensor_cxt);
+
+	ret = xioctl(s_p_sensor_cxt->fd_sensor, SENSOR_IO_SET_FLASH, &flash_level);
+	if (0 != ret)
+	{
+		CMR_LOGE("_Sensor_Device_Set_Flash failed, ret=%d \n",  ret);
+		ret = -1;
+	}
+
+	return ret;
+}
+#endif
+
 LOCAL int _Sensor_Device_GetFlashLevel(SENSOR_FLASH_LEVEL_T *level)
 {
 	int ret = SENSOR_SUCCESS;
@@ -729,6 +778,9 @@ LOCAL void Sensor_PowerOn(BOOLEAN power_on)
 
 	if (PNULL != power_func) {
 		power_func(power_on);
+#if defined(CONFIG_CAMERA_IOCTL_IOCTL_HAS_POWER_ONOFF)
+		_Sensor_Device_PowerON(power_on);
+#endif
 	} else {
 		if (power_on) {
 			Sensor_PowerDown(power_down);
@@ -747,6 +799,7 @@ LOCAL void Sensor_PowerOn(BOOLEAN power_on)
 					  SENSOR_AVDD_CLOSED);
 		}
 	}
+
 }
 
 
@@ -2690,6 +2743,13 @@ uint32_t Sensor_SetFlash(uint32_t flash_mode)
 
 	if (s_p_sensor_cxt->set_flash_cb) {
 		(*s_p_sensor_cxt->set_flash_cb)(flash_mode);
+
+#if defined(CONFIG_CAMERA_IOCTL_IOCTL_HAS_SET_FLASH)
+		// Fire an IOCTL call if supported, but don't watch for the return value
+		// Since the function handles the error message
+		// and there shouldn't be any danger when it fails.
+		_Sensor_Device_Set_Flash(flash_mode);
+#endif
 	} else {
 		CMR_LOGE("flash cb have not been registered, error!");
 	}

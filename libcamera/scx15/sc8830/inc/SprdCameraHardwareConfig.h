@@ -42,11 +42,19 @@ enum {
 
 enum {
 	CAMERA_SCENE_MODE_AUTO = 0,
+	CAMERA_SCENE_MODE_PORTRAIT,
+	CAMERA_SCENE_MODE_LANDSCAPE,
+	CAMERA_SCENE_MODE_SPORTS,
+	CAMERA_SCENE_MODE_PARTY,
+	CAMERA_SCENE_MODE_BEACH,
+	CAMERA_SCENE_MODE_SUNSET,
+	CAMERA_SCENE_MODE_DUSK_DAWN,
+	CAMERA_SCENE_MODE_FALL_COLOR,
+	CAMERA_SCENE_MODE_TEXT,
+	CAMERA_SCENE_MODE_CANDLELIGHT,
+	CAMERA_SCENE_MODE_FIREWORK,
+	CAMERA_SCENE_MODE_BACKLIGHT,
 	CAMERA_SCENE_MODE_NIGHT,
-	CAMERA_SCENE_MODE_ACTION, //not support
-	CAMERA_SCENE_MODE_PORTRAIT, //not support
-	CAMERA_SCENE_MODE_LANDSCAPE, //not support
-	CAMERA_SCENE_MODE_NORMAL,
 	CAMERA_SCENE_MODE_HDR,
 	CAMERA_SCENE_MODE_MAX
 };
@@ -230,6 +238,18 @@ const struct str_map wb_map[] = {
 	{NULL, 0 }
 };
 
+#ifdef CONFIG_CAMERA_KANAS
+const struct str_map effect_map[] = {
+	{"none",            CAMERA_EFFECT_NONE},
+	{"mono",            CAMERA_EFFECT_MONO},
+	{"negative",        CAMERA_EFFECT_NEGATIVE},
+	{"sepia",           CAMERA_EFFECT_SEPIA},
+	{"red-tint",         CAMERA_EFFECT_RED},
+	{"green-tint",       CAMERA_EFFECT_GREEN},
+	{"blue-tint",        CAMERA_EFFECT_BLUE},
+	{NULL,              0}
+};
+#else
 const struct str_map effect_map[] = {
 	{"none",            CAMERA_EFFECT_NONE},
 	{"mono",            CAMERA_EFFECT_MONO},
@@ -242,7 +262,28 @@ const struct str_map effect_map[] = {
 	{"cold",            CAMERA_EFFECT_BLUE},
 	{NULL,              0}
 };
+#endif
 
+#ifdef CONFIG_CAMERA_KANAS
+const struct str_map scene_mode_map[] = {
+	{"auto",            CAMERA_SCENE_MODE_AUTO},
+	{"portrait",        CAMERA_SCENE_MODE_PORTRAIT},
+	{"landscape",       CAMERA_SCENE_MODE_LANDSCAPE},
+	{"sports",          CAMERA_SCENE_MODE_SPORTS},
+	{"party",           CAMERA_SCENE_MODE_PARTY},
+	{"beach",           CAMERA_SCENE_MODE_BEACH},
+	{"sunset",          CAMERA_SCENE_MODE_SUNSET},
+	{"dusk-dawn",       CAMERA_SCENE_MODE_DUSK_DAWN},
+	{"fall-color",      CAMERA_SCENE_MODE_FALL_COLOR},
+	{"text",            CAMERA_SCENE_MODE_TEXT},
+	{"candlelight",     CAMERA_SCENE_MODE_CANDLELIGHT},
+	{"firework",        CAMERA_SCENE_MODE_FIREWORK},
+	{"backlight",       CAMERA_SCENE_MODE_BACKLIGHT},
+	{"night",           CAMERA_SCENE_MODE_NIGHT},
+	{"hdr",             CAMERA_SCENE_MODE_HDR},
+	{NULL,              0}
+};
+#else
 const struct str_map scene_mode_map[] = {
 	{"auto",            CAMERA_SCENE_MODE_AUTO},
 	{"night",           CAMERA_SCENE_MODE_NIGHT},
@@ -253,6 +294,7 @@ const struct str_map scene_mode_map[] = {
 	{"hdr",             CAMERA_SCENE_MODE_HDR},
 	{NULL,              0}
 };
+#endif
 
 const struct str_map camera_id_map[] = {
 	{"back_camera",     CAMERA_CAMERA_ID_BACK},
@@ -426,7 +468,11 @@ struct config_element sprd_front_camera_hardware_config[] = {
 	{"picture-size", "640x480"},
 	{"preview-size-values",	"960x540,720x540,720x480,640x480,352x288,320x240,176x144"},
 	{"preview-size", "640x480"},
+#ifdef CONFIG_CAMERA_KANAS
+	{"video-size-values",  ""},
+#else
 	{"video-size-values",  "720x480"},
+#endif
 	{"video-size", "720x480"},
 	{"video-picture-size-values", "1280x960,1280x960,1280x960"},
 	{"preferred-preview-size-for-video", ""},
@@ -539,7 +585,7 @@ struct config_element sprd_back_camera_hardware_config[] = {
 	{"picture-size-values", "3264x2448,2592x1944,2048x1536,1600x1200,1280x960,640x480"},
 	{"video-picture-size-values", "1280x960,1280x960,1280x960,1280x960,1280x960"},
 #endif
-	{"picture-size", "640x480"},
+	{"picture-size", "1600x1200"},
 #if defined(CONFIG_CAMERA_SMALL_PREVSIZE)
 #if defined(CONFIG_CAMERA_X3542)
 	{"preview-size-values", "720x480,640x480,352x288,176x144"},
@@ -549,9 +595,13 @@ struct config_element sprd_back_camera_hardware_config[] = {
 	{"preview-size", "640x480"},
 #else
 	{"preview-size-values", "1920x1088,1280x960,1280x720,960x540,720x540,720x480,640x480,352x288,320x240,176x144"},
-	{"preview-size", "1280x960"},
+	{"preview-size", "640x480"},
 #endif
+#ifdef CONFIG_CAMERA_KANAS
+	{"video-size-values", ""},
+#else
 	{"video-size-values", "720x480"},
+#endif
 	{"video-size", "1920x1088"},
 	{"preferred-preview-size-for-video", ""},
 	{"video-frame-format-values", "yuv420sp,yuv420p"},
@@ -569,9 +619,17 @@ struct config_element sprd_back_camera_hardware_config[] = {
 	{"jpeg-thumbnail-width","640"},
 	{"jpeg-thumbnail-height", "480"},
 	{"jpeg-thumbnail-quality", "70"},
-	{"effect-values", "none,mono,negative,sepia,cold,antique"},
+#ifdef CONFIG_CAMERA_KANAS
+	{"effect-values", "none,mono,red-tint,green-tint,blue-tint,negative,sepia"},
+#else
+    {"effect-values", "none,mono,negative,sepia,cold,antique"},
+#endif
 	{"effect", "none"},
+#ifdef CONFIG_CAMERA_KANAS
+	{"scene-mode-values", "auto,portrait,landscape,sports,party,beach,sunset,dusk-dawn,fall-color,text,candlelight,firework,back-light,night,hdr"},
+#else
 	{"scene-mode-values", "auto,night,portrait,landscape,action,normal,hdr"},
+#endif
 	{"scene-mode", "auto"},
 	{"cameraid-values", "back_camera,front_camera"},
 	{"cameraid","back_camera"},
@@ -622,7 +680,11 @@ struct config_element sprd_back_camera_hardware_config[] = {
 	{"antibanding-values","50hz,60hz"},
 	{"antibanding","50hz"},
 	{"antibanding-supported","true"},
+#ifdef CONFIG_CAMERA_KANAS
+	{"focal-length", "3.31"},
+#else
 	{"focal-length", "3.75"},
+#endif
 	{"horizontal-view-angle", "54"},
 	{"vertical-view-angle", "54"},
 #ifndef CONFIG_CAMERA_FLASH_NOT_SUPPORT

@@ -472,6 +472,9 @@ static int gralloc_alloc_framebuffer_locked(alloc_device_t* dev, size_t size, in
 			AINF("framebuffer accessed with dma buf (fd 0x%x)\n", (int)fb_dma_buf.fd);
 			hnd->share_fd = fb_dma_buf.fd;
 		}
+	#elif HIDL_INVALID_FD
+		hnd->share_fd = dup(m->framebuffer->fd);
+		AINF("Working around the FD issue. Using %d instead, caveat emptor.\n", hnd->share_fd);
 	#endif
 	}
 #endif
@@ -706,12 +709,18 @@ static int alloc_device_free(alloc_device_t* dev, buffer_handle_t handle)
 #endif
 	if (hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER)
 	{
+	// We won't actually free the FB when in when the
+	// workaround HIDL_NO_FREE_FB is active since the HIDL implementation
+	// will call free() the moment the allocation had succeeded then has been
+	// registered twice, one in this module, second in the HIDL implementation.
+#ifndef HIDL_NO_FREE_FB
 		// free this buffer
 		private_module_t* m = reinterpret_cast<private_module_t*>(dev->common.module);
 		const size_t bufferSize = m->finfo.line_length * m->info.yres;
 		int index = (hnd->base - m->framebuffer->base) / bufferSize;
 		m->bufferMask &= ~(1<<index);
 		close(hnd->fd);
+#endif
 
 #if GRALLOC_ARM_UMP_MODULE
 		if ( (int)UMP_INVALID_MEMORY_HANDLE != hnd->ump_mem_handle )

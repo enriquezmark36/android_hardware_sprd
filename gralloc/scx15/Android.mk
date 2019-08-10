@@ -72,6 +72,15 @@ LOCAL_CFLAGS += -DSPRD_DITHER_ENABLE
 LOCAL_SHARED_LIBRARIES += libdither
 endif
 
+ifeq ($(TARGET_USES_HIDL_WORKAROUNDS), true)
+# Creates a dummy fd when travelling via hwbinder
+LOCAL_CFLAGS += -DHIDL_INVALID_FD
+
+# Prevent HIDL from "freeing" FB memory at all.
+# Pun intended.
+LOCAL_CFLAGS += -DHIDL_NO_FREE_FB
+endif
+
 LOCAL_SRC_FILES := \
 	gralloc_module.cpp \
 	alloc_device.cpp \

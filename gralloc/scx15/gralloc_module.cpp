@@ -78,6 +78,18 @@ static int gralloc_register_buffer(gralloc_module_t const *module, buffer_handle
 
 	int retval = -EINVAL;
 
+#if HIDL_INVALID_FD
+	if (hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER)
+	{
+#if HIDL_INVALID_FD
+		AINF("Working around the FD issue Prt2. Closing %d; setting to -1.\n", hnd->share_fd);
+		close(hnd->share_fd);
+		hnd->share_fd = -1;
+#endif
+		return 0;
+	}
+#endif
+
 	pthread_mutex_lock(&s_map_lock);
 
 #if GRALLOC_ARM_UMP_MODULE
@@ -230,6 +242,16 @@ static int gralloc_unregister_buffer(gralloc_module_t const *module, buffer_hand
 	}
 
 	private_handle_t *hnd = (private_handle_t *)handle;
+
+#if HIDL_INVALID_FD
+	if (hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER)
+	{
+#if HIDL_INVALID_FD
+		AINF("Working around the FD issue Prt3. Silently ignore calls to unregister the FB: %p\n", handle);
+#endif
+		return 0;
+	}
+#endif
 
 	AERR_IF(hnd->lockState & private_handle_t::LOCK_STATE_READ_MASK, "[unregister] handle %p still locked (state=%08x)", hnd, hnd->lockState);
 

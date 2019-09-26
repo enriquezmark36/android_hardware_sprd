@@ -185,6 +185,9 @@ LOCAL_SRC_FILES += \
 	OverlayComposer/Utility.cpp \
 	OverlayComposer/SyncThread.cpp \
 
+LOCAL_SHARED_LIBRARIES += \
+	libnativewindow \
+
 endif
 
 ifeq ($(TARGET_BOARD_PLATFORM),sc8825)

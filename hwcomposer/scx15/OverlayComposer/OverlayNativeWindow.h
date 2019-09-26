@@ -35,6 +35,8 @@
 
 #include <ui/ANativeObjectBase.h>
 #include <ui/Fence.h>
+#include <system/window.h>
+
 #include "gralloc_priv.h"
 #include "Utility.h"
 

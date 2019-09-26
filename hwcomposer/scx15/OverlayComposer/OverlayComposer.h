@@ -68,6 +68,7 @@
 #include <errno.h>
 #include <fcntl.h>
 
+#include <ui/ANativeObjectBase.h>
 #include <GLES/gl.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -81,7 +82,6 @@
 #include <utils/RefBase.h>
 #include <utils/List.h>
 
-#include <ui/ANativeObjectBase.h>
 
 #include "gralloc_priv.h"
 

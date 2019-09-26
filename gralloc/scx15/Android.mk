@@ -81,6 +81,10 @@ LOCAL_CFLAGS += -DHIDL_INVALID_FD
 LOCAL_CFLAGS += -DHIDL_NO_FREE_FB
 endif
 
+ifeq ($(TARGET_USE_3_FRAMEBUFFER), true)
+LOCAL_CFLAGS += -DUSE_3_FRAMEBUFFER
+endif
+
 LOCAL_SRC_FILES := \
 	gralloc_module.cpp \
 	alloc_device.cpp \

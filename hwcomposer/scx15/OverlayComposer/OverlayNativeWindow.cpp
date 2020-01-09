@@ -119,7 +119,7 @@ int OverlayNativeWindow::dequeueBuffer(ANativeWindow* window,
     }
 
     private_handle_t* IONBuffer = self->mDisplayPlane->dequeueBuffer();
-    if (buffer == NULL)
+    if (IONBuffer == NULL)
     {
         ALOGE("Failed to get the Display plane buffer");
         return -1;
@@ -172,7 +172,6 @@ int OverlayNativeWindow::queueBuffer(ANativeWindow* window,
     const int index = self->mCurrentBufferIndex;
     self->front = static_cast<NativeBuffer*>(buffer);
     self->mNumFreeBuffers++;
-    self->mCondition.broadcast();
 
     queryDebugFlag(&mDebugFlag);
     ALOGI_IF(mDebugFlag, "OverlayNativeWindow::queueBuffer phy addr:%p", (void *)(((private_handle_t*)buffer->handle)->phyaddr));
@@ -236,9 +235,13 @@ int OverlayNativeWindow::query(const ANativeWindow* window,
             return NO_ERROR;
         case NATIVE_WINDOW_CONSUMER_RUNNING_BEHIND:
             *value = 0;
+            return NO_ERROR;
         case NATIVE_WINDOW_CONSUMER_USAGE_BITS:
             *value = GRALLOC_USAGE_HW_FB | GRALLOC_USAGE_HW_RENDER |
                      GRALLOC_USAGE_HW_COMPOSER | self->mWindowUsage;
+            return NO_ERROR;
+        case NATIVE_WINDOW_MIN_UNDEQUEUED_BUFFERS:
+            *value = 1;
             return NO_ERROR;
     }
     return BAD_VALUE;

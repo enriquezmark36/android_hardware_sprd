@@ -68,7 +68,7 @@ private:
 };
 
 
-#define NUM_FRAME_BUFFERS  2
+#define NUM_FRAME_BUFFERS  3
 
 
 class OverlayNativeWindow   //: public overlayNativeWindow

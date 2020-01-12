@@ -261,6 +261,7 @@ SPRDAVCEncoder::SPRDAVCEncoder(
       mVideoHeight(144),
       mVideoFrameRate(30),
       mVideoBitRate(192000),
+      mVideoControlRate(OMX_Video_ControlRateVariable),
       mVideoColorFormat(OMX_COLOR_FormatYUV420SemiPlanar),
       mIDRFrameRefreshIntervalInSec(1),
       mAVCEncProfile(AVC_BASELINE),
@@ -716,7 +717,7 @@ OMX_ERRORTYPE SPRDAVCEncoder::internalGetParameter(
             return OMX_ErrorUndefined;
         }
 
-        bitRate->eControlRate = OMX_Video_ControlRateVariable;
+        bitRate->eControlRate = mVideoControlRate;
         bitRate->nTargetBitrate = mVideoBitRate;
         return OMX_ErrorNone;
     }
@@ -845,10 +846,12 @@ OMX_ERRORTYPE SPRDAVCEncoder::internalSetParameter(
             (OMX_VIDEO_PARAM_BITRATETYPE *) params;
 
         if (bitRate->nPortIndex != 1 ||
-                bitRate->eControlRate != OMX_Video_ControlRateVariable) {
+                (bitRate->eControlRate != OMX_Video_ControlRateVariable &&
+                bitRate->eControlRate != OMX_Video_ControlRateConstant)) {
             return OMX_ErrorUndefined;
         }
 
+        mVideoControlRate = bitRate->eControlRate;
         mVideoBitRate = bitRate->nTargetBitrate;
         return OMX_ErrorNone;
     }

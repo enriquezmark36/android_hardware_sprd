@@ -89,6 +89,7 @@ private:
     int32_t  mVideoHeight;
     int32_t  mVideoFrameRate;
     int32_t  mVideoBitRate;
+    OMX_VIDEO_CONTROLRATETYPE  mVideoControlRate;
     int32_t  mVideoColorFormat;
     int32_t  mIDRFrameRefreshIntervalInSec;
     AVCProfile mAVCEncProfile;

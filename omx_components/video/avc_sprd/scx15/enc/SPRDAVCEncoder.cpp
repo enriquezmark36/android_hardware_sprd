@@ -997,6 +997,11 @@ OMX_ERRORTYPE SPRDAVCEncoder::internalSetParameter(
         return OMX_ErrorNone;
     }
 
+    case OMX_IndexParamVideoIntraRefresh:
+    {
+        return OMX_ErrorNone;   ///hw encoder may not support this mode
+    }
+
     default:
         return SprdSimpleOMXComponent::internalSetParameter(index, params);
     }

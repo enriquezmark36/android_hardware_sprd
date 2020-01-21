@@ -491,7 +491,9 @@ OMX_ERRORTYPE SPRDAVCEncoder::initEncParams() {
     int32 phy_addr = 0;
     int32 size = 0;
 
-    unsigned int size_extra = ((mVideoWidth+15)&(~15)) * ((mVideoHeight+15)&(~15)) * 3/2 * 2;
+    unsigned int size_of_yuv = ((mVideoWidth+15)&(~15)) * ((mVideoHeight+15)&(~15)) * 3/2;
+
+    unsigned int size_extra = size_of_yuv << 1;
     size_extra += (406*2*sizeof(uint32));
     size_extra += 1024;
     if (mIOMMUEnabled) {
@@ -522,7 +524,7 @@ OMX_ERRORTYPE SPRDAVCEncoder::initEncParams() {
         }
     }
 
-    unsigned int size_stream = ONEFRAME_BITSTREAM_BFR_SIZE;
+    unsigned int size_stream = size_of_yuv >> 1;
     if (mIOMMUEnabled) {
         mPmem_stream = new MemoryHeapIon("/dev/ion", size_stream, MemoryHeapBase::NO_CACHING, ION_HEAP_ID_MASK_SYSTEM);
     } else {

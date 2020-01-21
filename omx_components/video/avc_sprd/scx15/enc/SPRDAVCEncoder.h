@@ -94,6 +94,7 @@ private:
     int32_t  mIDRFrameRefreshIntervalInSec;
     AVCProfile mAVCEncProfile;
     AVCLevel   mAVCEncLevel;
+    int32_t  mQP_IVOP;
 
     int64_t  mNumInputFrames;
     int64_t  mPrevTimestampUs;
@@ -103,6 +104,8 @@ private:
     bool     mSawInputEOS;
     bool     mSignalledError;
     //bool     mIsIDRFrame;
+    bool     mRateCtrl;
+    bool     mForceIDR;
 
     tagAVCHandle          *mHandle;
     tagAVCEncParam        *mEncParams;

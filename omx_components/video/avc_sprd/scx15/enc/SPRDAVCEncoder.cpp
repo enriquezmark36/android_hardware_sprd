@@ -325,6 +325,7 @@ SPRDAVCEncoder::SPRDAVCEncoder(
       mIDRFrameRefreshIntervalInSec(1),
       mAVCEncProfile(AVC_BASELINE),
       mAVCEncLevel(AVC_LEVEL2),
+      mQP_IVOP(28),
       mNumInputFrames(-1),
       mPrevTimestampUs(-1),
       mStarted(false),
@@ -332,6 +333,8 @@ SPRDAVCEncoder::SPRDAVCEncoder(
       mReadyForNextFrame(true),
       mSawInputEOS(false),
       mSignalledError(false),
+      mRateCtrl(true),
+      mForceIDR(false),
       mStoreMetaData(OMX_FALSE),
       mIOMMUEnabled(false),
       mPbuf_yuv_v(NULL),
@@ -579,10 +582,10 @@ OMX_ERRORTYPE SPRDAVCEncoder::initEncParams() {
     }
 
     mEncConfig->h263En = 0;
-    mEncConfig->RateCtrlEnable = 1;
+    mEncConfig->RateCtrlEnable = mRateCtrl;
     mEncConfig->targetBitRate = mVideoBitRate;
     mEncConfig->FrameRate = mVideoFrameRate;
-    mEncConfig->QP_IVOP = 28;
+    mEncConfig->QP_IVOP = mQP_IVOP;
     mEncConfig->QP_PVOP = 28;
     mEncConfig->vbv_buf_size = mVideoBitRate/2;
     mEncConfig->profileAndLevel = 1;
@@ -617,6 +620,27 @@ OMX_ERRORTYPE SPRDAVCEncoder::initEncParams() {
 
 OMX_ERRORTYPE SPRDAVCEncoder::initEncoder() {
     CHECK(!mStarted);
+
+    /*
+     * Default to I-frames when using FormatAndroidOpaque
+     * Since the entire process with that format gets
+     * more expensive as the resolution grows since
+     * the buffer size grows exponentially along with the
+     * resolution.
+     *
+     * Otherwise, to conserve bandwidth, go with P-frames.
+     */
+    if ((mVideoColorFormat == OMX_COLOR_FormatAndroidOpaque) &&
+        (mVideoWidth * mVideoHeight) > 768000) {
+        mIDRFrameRefreshIntervalInSec = 0;
+        mRateCtrl = false;
+        mForceIDR = true;
+        mQP_IVOP = 31;
+
+
+        set_ddr_freq("400000");
+        mSetFreqCount ++;
+    }
 
     OMX_ERRORTYPE errType = OMX_ErrorNone;
     if (OMX_ErrorNone != (errType = initEncParams())) {
@@ -1315,7 +1339,7 @@ void SPRDAVCEncoder::onQueueFilled(OMX_U32 portIndex) {
 
             vid_in.time_stamp = (inHeader->nTimeStamp + 500) / 1000;  // in ms;
             vid_in.channel_quality = 1;
-            vid_in.vopType = (mNumInputFrames % mVideoFrameRate) ? 1 : 0;
+            vid_in.vopType = mForceIDR ? 0 : (mNumInputFrames % mVideoFrameRate) ? 1 : 0;
             vid_in.p_src_y = py;
             vid_in.p_src_v = 0;
             vid_in.p_src_y_phy = py_phy;

@@ -4718,7 +4718,7 @@ static void adev_modem_start_tag(void *data, const XML_Char *tag_name,
             }
         }
     }
-    else if ((strcmp(tag_name, "voip")&& !modem->voip_res.is_done) == 0) {
+    else if (!modem->voip_res.is_done && !strcmp(tag_name, "voip")) {
 
             char prop_t[PROPERTY_VALUE_MAX] = {0};
             char prop_w[PROPERTY_VALUE_MAX] = {0};

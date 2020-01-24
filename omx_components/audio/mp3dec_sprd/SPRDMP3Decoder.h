@@ -73,6 +73,7 @@ private:
     bool mEOSFlag;
     bool mFirstFrame;
     bool mSignalledError;
+    bool mInputEosUnDecode;
     void* mLibHandle;
 
     FT_MP3_ARM_DEC_Construct mMP3_ARM_DEC_Construct;

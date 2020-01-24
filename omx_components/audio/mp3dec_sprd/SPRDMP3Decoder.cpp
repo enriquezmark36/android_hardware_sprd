@@ -58,6 +58,7 @@ SPRDMP3Decoder::SPRDMP3Decoder(
       mNumFramesOutput(0),
       mEOSFlag(false),
       mSignalledError(false),
+      mInputEosUnDecode(false),
       mLibHandle(NULL),
       mOutputPortSettingsChange(NONE),
       mMP3_ARM_DEC_Construct(NULL),
@@ -177,21 +178,20 @@ OMX_ERRORTYPE SPRDMP3Decoder::internalGetParameter(
     }
     case OMX_IndexParamAudioMp3:
     {
-        OMX_AUDIO_PARAM_MP3TYPE *mp3Params =
-            (OMX_AUDIO_PARAM_MP3TYPE *)params;
+	    OMX_AUDIO_PARAM_MP3TYPE *mp3Params =
+		    (OMX_AUDIO_PARAM_MP3TYPE *)params;
 
-        if (mp3Params->nPortIndex > 1) {
-            return OMX_ErrorUndefined;
-        }
+	    if (mp3Params->nPortIndex > 1) {
+		    return OMX_ErrorUndefined;
+	    }
 
-        mp3Params->nChannels = mNumChannels;
-        mp3Params->nBitRate = 0 /* unknown */;
-        mp3Params->nSampleRate = mSamplingRate;
-        // other fields are encoder-only
+	    mp3Params->nChannels = mNumChannels;
+	    mp3Params->nBitRate = 0 /* unknown */;
+	    mp3Params->nSampleRate = mSamplingRate;
+	    // other fields are encoder-only
 
-        return OMX_ErrorNone;
+	    return OMX_ErrorNone;
     }
-
     default:
         return SprdSimpleOMXComponent::internalGetParameter(index, params);
     }
@@ -206,8 +206,11 @@ OMX_ERRORTYPE SPRDMP3Decoder::internalSetParameter(
             (const OMX_PARAM_COMPONENTROLETYPE *)params;
 
         if (strncmp((const char *)roleParams->cRole,
-                    "audio_decoder.mp3",
-                    OMX_MAX_STRINGNAME_SIZE - 1)) {
+                "audio_decoder.mp3", OMX_MAX_STRINGNAME_SIZE - 1) &&
+                strncmp((const char *)roleParams->cRole,
+                "audio_decoder.mp1", OMX_MAX_STRINGNAME_SIZE - 1) &&
+                strncmp((const char *)roleParams->cRole,
+                "audio_decoder.mp2", OMX_MAX_STRINGNAME_SIZE - 1)) {
             return OMX_ErrorUndefined;
         }
 
@@ -428,17 +431,24 @@ void SPRDMP3Decoder::onQueueFilled(OMX_U32 portIndex) {
     List<BufferInfo *> &inQueue = getPortQueue(0);
     List<BufferInfo *> &outQueue = getPortQueue(1);
 
-    while (!inQueue.empty() && !outQueue.empty()) {
-        BufferInfo *inInfo = *inQueue.begin();
-        OMX_BUFFERHEADERTYPE *inHeader = inInfo->mHeader;
+    while ((!inQueue.empty() || mInputEosUnDecode) && !outQueue.empty()) {
+        BufferInfo *inInfo = NULL;;
+        OMX_BUFFERHEADERTYPE *inHeader = NULL;
+        if (!inQueue.empty()) {
+            inInfo = *inQueue.begin();
+            inHeader = inInfo->mHeader;
+        }
 
         BufferInfo *outInfo = *outQueue.begin();
         OMX_BUFFERHEADERTYPE *outHeader = outInfo->mHeader;
 
-        if (mEOSFlag && (inHeader->nFlags & OMX_BUFFERFLAG_EOS)) {
-            inQueue.erase(inQueue.begin());
-            inInfo->mOwnedByUs = false;
-            notifyEmptyBufferDone(inHeader);
+        if (mEOSFlag) {
+            if (inHeader) {
+                inQueue.erase(inQueue.begin());
+                inInfo->mOwnedByUs = false;
+                notifyEmptyBufferDone(inHeader);
+            }
+            mInputEosUnDecode = false;
             if (!mIsFirst) {
                 // pad the end of the stream with 529 samples, since that many samples
                 // were trimmed off the beginning when decoding started
@@ -457,8 +467,10 @@ void SPRDMP3Decoder::onQueueFilled(OMX_U32 portIndex) {
             notifyFillBufferDone(outHeader);
             return;
         }
-        if (inHeader->nOffset == 0) {
+        if (inHeader && inHeader->nOffset == 0) {
             mAnchorTimeUs = inHeader->nTimeStamp;
+            mNumFramesOutput = 0;
+        } else if (!inHeader && mInputEosUnDecode){
             mNumFramesOutput = 0;
         }
 
@@ -496,10 +508,15 @@ void SPRDMP3Decoder::onQueueFilled(OMX_U32 portIndex) {
         inputParam.frame_len = mPreFilledLen;
         //Get current frame bitrate.
         mBitRate = getCurFrameBitRate(inputParam.frame_buf_ptr);
-        if (inHeader->nFlags & OMX_BUFFERFLAG_EOS) {
+        if ((!inHeader && mInputEosUnDecode)
+                || (inHeader && (inHeader->nFlags & OMX_BUFFERFLAG_EOS) && inHeader->nFilledLen == 0)
+                || (inHeader && (inHeader->nFlags & OMX_BUFFERFLAG_EOS) && mFirstFrame)) {
             mEOSFlag = true;
             mNextMdBegin = 0;
         } else {
+            if (inHeader->nFlags & OMX_BUFFERFLAG_EOS) {
+                mInputEosUnDecode = true;
+            }
             mEOSFlag = false;
             mNextMdBegin = getNextMdBegin(inHeader->pBuffer + inHeader->nOffset);
         }
@@ -509,10 +526,6 @@ void SPRDMP3Decoder::onQueueFilled(OMX_U32 portIndex) {
         //Config decoded output frame params.
         outputFrame.pcm_data_l_ptr = mLeftBuf;
         outputFrame.pcm_data_r_ptr = mRightBuf;
-
-        if(mMaxFrameBuf != NULL)
-            //dump_mp3(0, (void *)mMaxFrameBuf, (size_t)mPreFilledLen); //dump input data
-
         mMP3_ARM_DEC_DecodeFrame(mMP3DecHandle, &inputParam,&outputFrame, &decoderRet);
 
         if(decoderRet != MP3_ARM_DEC_ERROR_NONE) { //decoder error
@@ -563,17 +576,19 @@ void SPRDMP3Decoder::onQueueFilled(OMX_U32 portIndex) {
         mNumFramesOutput += outputFrame.pcm_bytes;
 
         if(mEOSFlag == false) {
-            mPreFilledLen = inHeader->nFilledLen;
-            if (mMaxFrameBuf && mPreFilledLen <= MP3_MAX_DATA_FRAME_LEN) {
-                memcpy(mMaxFrameBuf, inHeader->pBuffer + inHeader->nOffset, mPreFilledLen);
-                mLastInTimeUs = mAnchorTimeUs;
-            }
+            if (inHeader) {
+                mPreFilledLen = inHeader->nFilledLen;
+                if (mMaxFrameBuf && mPreFilledLen <= MP3_MAX_DATA_FRAME_LEN) {
+                    memcpy(mMaxFrameBuf, inHeader->pBuffer + inHeader->nOffset, mPreFilledLen);
+                    mLastInTimeUs = mAnchorTimeUs;
+                }
 
-            inInfo->mOwnedByUs = false;
-            inQueue.erase(inQueue.begin());
-            inInfo = NULL;
-            notifyEmptyBufferDone(inHeader);
-            inHeader = NULL;
+                inInfo->mOwnedByUs = false;
+                inQueue.erase(inQueue.begin());
+                inInfo = NULL;
+                notifyEmptyBufferDone(inHeader);
+                inHeader = NULL;
+            }
         }
 
         if (numOutBytes <= outHeader->nOffset) {
@@ -586,6 +601,7 @@ void SPRDMP3Decoder::onQueueFilled(OMX_U32 portIndex) {
         outInfo = NULL;
         notifyFillBufferDone(outHeader);
         outHeader = NULL;
+
     }
 }
 
@@ -604,6 +620,10 @@ void SPRDMP3Decoder::onPortFlushPrepare(OMX_U32 portIndex) {
     }
 }
 void SPRDMP3Decoder::onPortFlushCompleted(OMX_U32 portIndex) {
+    if (portIndex == 0) {
+        mInputEosUnDecode = false;
+        mEOSFlag = false;
+    }
     // TODO
 }
 
@@ -684,6 +704,8 @@ bool SPRDMP3Decoder::openDecoder(const char* libName)
 
 void SPRDMP3Decoder::onReset() {
     // TODO.
+    mInputEosUnDecode = false;
+    mEOSFlag = false;
     ALOGI("onReset.");
 }
 

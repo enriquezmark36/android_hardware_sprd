@@ -254,6 +254,9 @@ SPRDAVCDecoder::SPRDAVCDecoder(
     mDumpStrmEnabled = !strcmp(value_dump, "true");
     ALOGI("%s, mDumpYUVEnabled: %d, mDumpStrmEnabled: %d", __FUNCTION__, mDumpYUVEnabled, mDumpStrmEnabled);
 
+#ifdef SOC_SCX35
+    mIOMMUEnabled = MemoryHeapIon::Mm_iommu_is_enabled();
+#else
     if (MemoryHeapIon::IOMMU_is_enabled(ION_MM)) {
         mIOMMUEnabled = true;
         mIOMMUID = ION_MM;
@@ -261,6 +264,8 @@ SPRDAVCDecoder::SPRDAVCDecoder(
         mIOMMUEnabled = true;
         mIOMMUID = ION_VSP;
     }
+#endif
+
     ALOGI("%s, is IOMMU enabled: %d, ID: %d", __FUNCTION__, mIOMMUEnabled, mIOMMUID);
 
     if(mDecoderSwFlag) {
@@ -481,9 +486,17 @@ status_t SPRDAVCDecoder::initDecoder() {
         } else {
             int ret;
             if (mIOMMUEnabled) {
+#ifdef SOC_SCX35
+                ret = mPmem_stream->get_mm_iova((int *) &phy_addr, (int *)&size);
+#else
                 ret = mPmem_stream->get_iova(mIOMMUID, &phy_addr, &size);
+#endif
             } else {
+#ifdef SOC_SCX35
+                ret = mPmem_stream->get_phy_addr_from_ion((int *)&phy_addr, (int *)&size);
+#else
                 ret = mPmem_stream->get_phy_addr_from_ion(&phy_addr, &size);
+#endif
             }
             if (ret < 0) {
                 ALOGE("Failed to alloc bitstream pmem buffer, get phy addr failed");
@@ -555,7 +568,11 @@ void SPRDAVCDecoder::releaseDecoder() {
             mPbuf_stream_v = NULL;
         } else {
             if (mIOMMUEnabled) {
+#ifdef SOC_SCX35
+                mPmem_stream->free_mm_iova(mPbuf_stream_p, mPbuf_stream_size);
+#else
                 mPmem_stream->free_iova(mIOMMUID, mPbuf_stream_p, mPbuf_stream_size);
+#endif
             }
             mPmem_stream.clear();
             mPbuf_stream_v = NULL;
@@ -565,7 +582,11 @@ void SPRDAVCDecoder::releaseDecoder() {
     }
     if (mPbuf_extra_v != NULL) {
         if (mIOMMUEnabled) {
+#ifdef SOC_SCX35
+            mPmem_extra->free_mm_iova(mPbuf_extra_p, mPbuf_extra_size);
+#else
             mPmem_extra->free_iova(mIOMMUID, mPbuf_extra_p, mPbuf_extra_size);
+#endif
         }
         mPmem_extra.clear();
         mPbuf_extra_v = NULL;
@@ -576,7 +597,11 @@ void SPRDAVCDecoder::releaseDecoder() {
     for (int i = 0; i < 17; i++) {
         if (mPbuf_mbinfo_v[i]) {
             if (mIOMMUEnabled) {
+#ifdef SOC_SCX35
+                mPmem_mbinfo[i]->free_mm_iova(mPbuf_mbinfo_p[i], mPbuf_mbinfo_size[i]);
+#else
                 mPmem_mbinfo[i]->free_iova(ION_MM, mPbuf_mbinfo_p[i], mPbuf_mbinfo_size[i]);
+#endif
             }
             mPmem_mbinfo[i].clear();
             mPbuf_mbinfo_v[i] = NULL;
@@ -884,7 +909,9 @@ OMX_ERRORTYPE SPRDAVCDecoder::internalUseBuffer(
         CHECK((*header)->pOutputPortPrivate != NULL);
         BufferCtrlStruct* pBufCtrl= (BufferCtrlStruct*)((*header)->pOutputPortPrivate);
         pBufCtrl->iRefCount = 1; //init by1
+#ifndef SOC_SCX35
         pBufCtrl->id = mIOMMUID;
+#endif
         if(mAllocateBuffers) {
             if(bufferPrivate != NULL) {
                 pBufCtrl->pMem = ((BufferPrivateStruct*)bufferPrivate)->pMem;
@@ -903,7 +930,11 @@ OMX_ERRORTYPE SPRDAVCDecoder::internalUseBuffer(
                 size_t bufferSize = 0;
                 native_handle_t *pNativeHandle = (native_handle_t *)((*header)->pBuffer);
                 struct private_handle_t *private_h = (struct private_handle_t *)pNativeHandle;
+#ifdef SOC_SCX35
+                MemoryHeapIon::Get_mm_iova(private_h->share_fd, (int *)&picPhyAddr, (int *)&bufferSize);
+#else
                 MemoryHeapIon::Get_iova(mIOMMUID, private_h->share_fd, &picPhyAddr, &bufferSize);
+#endif
 
                 pBufCtrl->pMem = NULL;
                 pBufCtrl->bufferFd = private_h->share_fd;
@@ -970,12 +1001,20 @@ OMX_ERRORTYPE SPRDAVCDecoder::allocateBuffer(
             }
 
             if (mIOMMUEnabled) {
+#ifdef SOC_SCX35
+                if(pMem->get_mm_iova((int *)&phyAddr, (int *)&bufferSize)) {
+#else
                 if(pMem->get_iova(mIOMMUID, &phyAddr, &bufferSize)) {
+#endif
                     ALOGE("get_mm_iova fail");
                     return OMX_ErrorInsufficientResources;
                 }
             } else {
+#ifdef SOC_SCX35
+                if(pMem->get_phy_addr_from_ion((int *) &phyAddr, (int *)&bufferSize)) {
+#else
                 if(pMem->get_phy_addr_from_ion(&phyAddr, &bufferSize)) {
+#endif
                     ALOGE("get_phy_addr_from_ion fail");
                     return OMX_ErrorInsufficientResources;
                 }
@@ -1016,7 +1055,11 @@ OMX_ERRORTYPE SPRDAVCDecoder::freeBuffer(
             if(pBufCtrl->pMem != NULL) {
                 ALOGI("freeBuffer, phyAddr: 0x%lx", pBufCtrl->phyAddr);
                 if (mIOMMUEnabled) {
+#ifdef SOC_SCX35
+                    pBufCtrl->pMem->free_mm_iova(pBufCtrl->phyAddr, pBufCtrl->bufferSize);
+#else
                     pBufCtrl->pMem->free_iova(mIOMMUID, pBufCtrl->phyAddr, pBufCtrl->bufferSize);
+#endif
                 }
                 pBufCtrl->pMem.clear();
             }
@@ -1299,7 +1342,11 @@ void SPRDAVCDecoder::onQueueFilled(OMX_U32 portIndex) {
                     native_handle_t *pNativeHandle = (native_handle_t *)outHeader->pBuffer;
                     struct private_handle_t *private_h = (struct private_handle_t *)pNativeHandle;
                     size_t bufferSize = 0;
+#ifdef SOC_SCX35
+                    MemoryHeapIon::Get_phy_addr_from_ion(private_h->share_fd, (int *)&picPhyAddr, (int *)&bufferSize);
+#else
                     MemoryHeapIon::Get_phy_addr_from_ion(private_h->share_fd, &picPhyAddr, &bufferSize);
+#endif
                     pBufCtrl->phyAddr = picPhyAddr;
                 }
             }
@@ -1385,11 +1432,23 @@ void SPRDAVCDecoder::onQueueFilled(OMX_U32 portIndex) {
         if (ret == MMDEC_OK) {
             if (!((decoderInfo.picWidth<= mCapability.max_width&& decoderInfo.picHeight<= mCapability.max_height)
                     || (decoderInfo.picWidth <= mCapability.max_height && decoderInfo.picHeight <= mCapability.max_width))) {
+#ifdef SOC_SCX35
+                /*
+                 * For kanas-w devices, the VSP should be able to properly decode 720p videos
+                 * at 60fps with few frames dropped, same goes for 30fps 1080p videos.
+                 * Don't dream about smoothly playing 60fps 1080p.
+                 * The mileage may vary between videos; some 30fps 1080p videos
+                 * could also be decoded with minimal to no frame drops.
+                 */
+                ALOGV("[%d,%d] is out of range [%d, %d], expect major slowdowns",
+                      decoderInfo.picWidth, decoderInfo.picHeight, mCapability.max_width, mCapability.max_height);
+#else
                 ALOGE("[%d,%d] is out of range [%d, %d], failed to support this format.",
                       decoderInfo.picWidth, decoderInfo.picHeight, mCapability.max_width, mCapability.max_height);
                 notify(OMX_EventError, OMX_ErrorFormatNotDetected, 0, NULL);
                 mSignalledError = true;
                 return;
+#endif
             }
 
             if (handlePortSettingChangeEvent(&decoderInfo)) {
@@ -1717,7 +1776,11 @@ int SPRDAVCDecoder::VSP_malloc_cb(unsigned int size_extra) {
 
         if (mPbuf_extra_v != NULL) {
             if (mIOMMUEnabled) {
+#ifdef SOC_SCX35
+                mPmem_extra->free_mm_iova(mPbuf_extra_p, mPbuf_extra_size);
+#else
                 mPmem_extra->free_iova(mIOMMUID, mPbuf_extra_p, mPbuf_extra_size);
+#endif
             }
             mPmem_extra.clear();
             mPbuf_extra_v = NULL;
@@ -1736,11 +1799,18 @@ int SPRDAVCDecoder::VSP_malloc_cb(unsigned int size_extra) {
             unsigned long phy_addr;
             size_t buffer_size;
 
+#ifdef SOC_SCX35
+            if (mIOMMUEnabled)
+                ret = mPmem_extra->get_mm_iova((int *)&phy_addr, (int *)&buffer_size);
+            else
+                ret = mPmem_extra->get_phy_addr_from_ion((int *)&phy_addr, (int *)&buffer_size);
+#else
             if (mIOMMUEnabled) {
                 ret = mPmem_extra->get_iova(mIOMMUID, &phy_addr, &buffer_size);
             } else {
                 ret = mPmem_extra->get_phy_addr_from_ion(&phy_addr, &buffer_size);
             }
+#endif
             if(ret < 0) {
                 ALOGE ("mPmem_extra: get phy addr fail %d",ret);
                 return -1;
@@ -1776,7 +1846,11 @@ int SPRDAVCDecoder::VSP_malloc_mbinfo_cb(unsigned int size_mbinfo, unsigned long
 
     if (mPbuf_mbinfo_v[idx] != NULL) {
         if (mIOMMUEnabled) {
+#ifdef SOC_SCX35
+            mPmem_mbinfo[idx]->free_mm_iova(mPbuf_mbinfo_p[idx], mPbuf_mbinfo_size[idx]);
+#else
             mPmem_mbinfo[idx]->free_iova(ION_MM, mPbuf_mbinfo_p[idx], mPbuf_mbinfo_size[idx]);
+#endif
         }
         mPmem_mbinfo[idx].clear();
         mPbuf_mbinfo_v[idx] = NULL;
@@ -1795,11 +1869,18 @@ int SPRDAVCDecoder::VSP_malloc_mbinfo_cb(unsigned int size_mbinfo, unsigned long
         unsigned long phy_addr;
         size_t buffer_size;
 
+#ifdef SOC_SCX35
+        if (mIOMMUEnabled)
+            ret = mPmem_mbinfo[idx]->get_mm_iova((int *)&phy_addr, (int *)&buffer_size);
+        else
+            ret = mPmem_mbinfo[idx]->get_phy_addr_from_ion((int *)&phy_addr, (int *)&buffer_size);
+#else
         if (mIOMMUEnabled) {
             ret = mPmem_mbinfo[idx]->get_iova(ION_MM, &phy_addr, &buffer_size);
         } else {
             ret = mPmem_mbinfo[idx]->get_phy_addr_from_ion(&phy_addr, &buffer_size);
         }
+#endif
         if(ret < 0) {
             ALOGE ("mPmem_mbinfo[%d]: get phy addr fail %d", idx, ret);
             return -1;

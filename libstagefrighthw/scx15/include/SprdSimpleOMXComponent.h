@@ -107,6 +107,10 @@ protected:
     virtual void onPortFlushPrepare(OMX_U32 portIndex);
 
     PortInfo *editPortInfo(OMX_U32 portIndex);
+#ifdef SOC_SCX35
+    bool isExecuting();
+    void freeOutputBufferIOVA();
+#endif
 
 private:
     enum {

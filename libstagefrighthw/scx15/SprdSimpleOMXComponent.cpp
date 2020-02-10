@@ -742,7 +742,32 @@ SprdSimpleOMXComponent::PortInfo *SprdSimpleOMXComponent::editPortInfo(
     CHECK_LT(portIndex, mPorts.size());
     return &mPorts.editItemAt(portIndex);
 }
+#ifdef SOC_SCX35
+bool SprdSimpleOMXComponent::isExecuting() {
+    return mState == OMX_StateExecuting;
+}
 
+void SprdSimpleOMXComponent::freeOutputBufferIOVA() {
+    PortInfo *port = &mPorts.editItemAt(OMX_DirOutput);
 
+    for (size_t i = 0; i < port->mBuffers.size(); ++i) {
+        BufferInfo *buffer = &port->mBuffers.editItemAt(i);
+        OMX_BUFFERHEADERTYPE *header = buffer->mHeader;
+
+        if(header->pOutputPortPrivate != NULL) {
+                BufferCtrlStruct *pBufCtrl = (BufferCtrlStruct*)(header->pOutputPortPrivate);
+                bool iommu_is_enable = MemoryHeapIon::Mm_iommu_is_enabled();
+
+                if (iommu_is_enable) {
+                    if(pBufCtrl->bufferFd > 0) {
+                        ALOGI("%s, fd: %d, iova: 0x%x", __FUNCTION__, pBufCtrl->bufferFd, pBufCtrl->phyAddr);
+                        MemoryHeapIon::Free_mm_iova(pBufCtrl->bufferFd, pBufCtrl->phyAddr, pBufCtrl->bufferSize);
+                        pBufCtrl->bufferFd = -1;
+                }
+            }
+        }
+    }
+}
+#endif
 
 }  // namespace android

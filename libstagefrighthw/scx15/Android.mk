@@ -61,4 +61,8 @@ LOCAL_PROPRIETARY_MODULE := true
 
 LOCAL_CFLAGS:= -DLOG_TAG=\"$(TARGET_BOARD_PLATFORM).libstagefright\"
 
+ifeq ($(strip $(SOC_SCX35)),true)
+LOCAL_CFLAGS += -DSOC_SCX35
+endif
+
 include $(BUILD_SHARED_LIBRARY)

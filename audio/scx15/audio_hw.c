@@ -136,14 +136,14 @@
 /* constraint imposed by VBC: all period sizes must be multiples of 160 */
 #define VBC_BASE_FRAME_COUNT 160
 /* number of base blocks in a short period (low latency) */
-#define SHORT_PERIOD_MULTIPLIER 8 /* 29 ms */
+#define SHORT_PERIOD_MULTIPLIER 4 /* 18.125 ms */
 /* number of frames per short period (low latency) */
 #define SHORT_PERIOD_SIZE (VBC_BASE_FRAME_COUNT * SHORT_PERIOD_MULTIPLIER)
 /* number of short periods in a long period (low power) */
 #ifdef _LPA_IRAM
-#define LONG_PERIOD_MULTIPLIER 3 /* 87 ms */
+#define LONG_PERIOD_MULTIPLIER 5 /* 90.625 ms */
 #else
-#define LONG_PERIOD_MULTIPLIER 6  /* 174 ms */
+#define LONG_PERIOD_MULTIPLIER 20  /* 362.5 ms */
 #endif
 /* number of frames per long period (low power) */
 #define LONG_PERIOD_SIZE (SHORT_PERIOD_SIZE * LONG_PERIOD_MULTIPLIER)
@@ -2240,7 +2240,7 @@ static ssize_t out_write(struct audio_stream_out *stream, const void* buffer,
                 ALOGW("low_power out->write_threshold=%d, config.avail_min=%d, start_threshold=%d",
                         out->write_threshold,out->config.avail_min, out->config.start_threshold);
             } else {
-                out->config.avail_min = SHORT_PERIOD_SIZE;
+                out->config.avail_min = SHORT_PERIOD_SIZE/2;
                 ALOGW("out->write_threshold=%d, config.avail_min=%d, start_threshold=%d",
                         out->write_threshold,out->config.avail_min, out->config.start_threshold);
             }

@@ -39,6 +39,7 @@
 #include <fcntl.h>
 #include <linux/fb.h>
 #include <sys/ioctl.h>
+#include <bfqio/bfqio.h>
 
 #include "SprdFrameBufferHAL.h"
 #include "../SprdDisplayDevice.h"
@@ -108,6 +109,9 @@ bool SprdVsyncEvent::threadLoop() {
             mCondition.wait(mLock);
         }
     }
+
+    android_set_rt_ioprio(0,1);
+
 
     //8810 use sleep mode
 #ifdef _VSYNC_USE_SOFT_TIMER

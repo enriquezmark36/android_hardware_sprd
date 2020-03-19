@@ -40,6 +40,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libui \
 	libsync \
 	libmemoryheapion \
+	libbfqio_vendor
 
 LOCAL_STATIC_LIBRARIES := \
 	libHWCUtils \
@@ -177,6 +178,7 @@ ifeq ($(strip $(USE_OVERLAY_COMPOSER_GPU)),true)
 
 LOCAL_CFLAGS += \
 	-DOVERLAY_COMPOSER_GPU
+
 
 LOCAL_SRC_FILES += \
 	OverlayComposer/OverlayComposer.cpp \

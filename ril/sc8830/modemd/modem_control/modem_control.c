@@ -882,14 +882,17 @@ void* detect_sipc_modem(void *param)
 			g_b_wake_locking = true;
 			memset(buf, 0, sizeof(buf));
 			MODEM_LOGD("enter read ...");
-			numRead = read(fd, buf, sizeof(buf));
+			numRead = read(fd, buf, sizeof(buf) - 1);
 			if (numRead < 0) {
 				MODEM_LOGE("read %d return %d, errno = %s", fd , numRead, strerror(errno));
 				sleep(1);
 				continue;
 			}
 			MODEM_LOGD("buf=%s", buf);
-			if ((numWrite = write(client_modemd,buf,strlen(buf)))<=0)
+
+			// modemd uses 128 buffers so it might be best to just send 128
+			// bytes since it's just going to strstr at the beginning
+			if ((numWrite = write(client_modemd,buf, numRead > 128 ? 128 : numRead ))<=0)
 				MODEM_LOGE("write %d return %d, errno = %s", fd , numWrite, strerror(errno));
 			else
 				MODEM_LOGD("write to modemd len = %d\n",i);

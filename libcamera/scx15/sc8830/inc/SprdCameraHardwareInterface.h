@@ -54,20 +54,6 @@ typedef struct sprd_camera_memory {
 	bool busy_flag;
 }sprd_camera_memory_t;
 
-namespace hardware {
-
-class CameraInfoWrapper : public CameraInfo {
-public:
-	CameraInfoWrapper(int facing, int orientation) {
-		this->facing = facing;
-		this->orientation = orientation;
-	}
-};
-
-} // namespace hardware
-
-using hardware::CameraInfoWrapper;
-
 #define MAX_SUB_RAWHEAP_NUM 10
 
 class SprdCameraHardware : public virtual RefBase {
@@ -122,8 +108,8 @@ public:
 	static int                   getPropertyAtv();
 	static int                   getNumberOfCameras();
 	static int                   getCameraInfo(int cameraId, struct camera_info *cameraInfo);
-	static const CameraInfoWrapper kCameraInfo[];
-	static const CameraInfoWrapper kCameraInfo3[];
+	static const camera_info_t   kCameraInfo[];
+	static const camera_info_t   kCameraInfo3[];
 	static int                   switch_monitor_thread_init(void *p_data);
 	static int                   switch_monitor_thread_deinit(void *p_data);
 	static void*                 switch_monitor_thread_proc(void *p_data);

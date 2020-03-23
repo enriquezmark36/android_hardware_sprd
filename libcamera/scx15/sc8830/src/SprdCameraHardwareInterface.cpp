@@ -108,33 +108,45 @@ bool gIsApctRead = false;
 
 gralloc_module_t const* SprdCameraHardware::mGrallocHal = NULL;
 
-const CameraInfoWrapper SprdCameraHardware::kCameraInfo[] = {
+#define CAMERA_INFO_HAL1 \
+    CAMERA_MODULE_API_VERSION_1_0, /* device_version */ \
+    NULL, /* static_camera_characteristics */ \
+    0,    /* resource_cost */ \
+    NULL, /* conflicting_devices */ \
+    0    /* conflicting_devices_length */
+
+const camera_info_t SprdCameraHardware::kCameraInfo[] = {
 	{
 		CAMERA_FACING_BACK,
 		90,/*orientation*/
+		CAMERA_INFO_HAL1
 	},
 #ifndef CONFIG_DCAM_SENSOR_NO_FRONT_SUPPORT
 	{
 		CAMERA_FACING_FRONT,
 		270,/*orientation*/
+		CAMERA_INFO_HAL1
 	},
 #endif
 };
 
-const CameraInfoWrapper SprdCameraHardware::kCameraInfo3[] = {
+const camera_info_t SprdCameraHardware::kCameraInfo3[] = {
 	{
 		CAMERA_FACING_BACK,
 		90,/*orientation*/
+		CAMERA_INFO_HAL1
 	},
 
 	{
 		CAMERA_FACING_FRONT,
 		270,/*orientation*/
+		CAMERA_INFO_HAL1
 	},
 
 	{
 		2,
 		0,/* orientation */
+		CAMERA_INFO_HAL1
 	}
 };
 

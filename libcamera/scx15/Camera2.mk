@@ -106,6 +106,7 @@ LOCAL_SRC_FILES+= \
 endif
 
 LOCAL_MODULE_RELATIVE_PATH := hw
+LOCAL_PROPRIETARY_MODULE := true
 LOCAL_CFLAGS := -fno-strict-aliasing -D_VSP_ -DJPEG_ENC -D_VSP_LINUX_ -DCHIP_ENDIAN_LITTLE -DCONFIG_CAMERA_2M  -DANDROID_4100
 
 ifeq ($(strip $(TARGET_BOARD_PLATFORM)),scx15)
@@ -255,6 +256,10 @@ LOCAL_MODULE_TAGS := optional
 
 ifeq ($(strip $(sc8830like)),1)
 LOCAL_SHARED_LIBRARIES := libexif libutils libbinder libcamera_client libskia libcutils libsqlite libhardware libmorpho_easy_hdr libcamera_metadata libmemoryheapion
+LOCAL_SHARED_LIBRARIES += \
+	libnativewindow \
+	libgui \
+	liblog
 endif
 
 ifdef CONFIG_CAMERA_ISP

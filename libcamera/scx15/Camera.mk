@@ -64,6 +64,7 @@ LOCAL_SRC_FILES:= \
 	sensor/sensor_hi702_ccir.c \
 	sensor/sensor_pattern.c \
 	sensor/sensor_sr352.c \
+	sensor/sensor_s5k4ecgx_mipi.c \
 	vsp/sc8830/src/jpg_drv_sc8830.c \
 	jpeg/jpeg_fw_8830/src/jpegcodec_bufmgr.c \
 	jpeg/jpeg_fw_8830/src/jpegcodec_global.c \

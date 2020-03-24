@@ -5778,7 +5778,7 @@ static int HAL_getCameraInfo(int cameraId, struct camera_info *cameraInfo)
 	return SprdCameraHardware::getCameraInfo(cameraId, cameraInfo);
 }
 
-#define SET_METHOD(m) m : HAL_camera_device_##m
+#define SET_METHOD(m) .m = HAL_camera_device_##m
 
 static camera_device_ops_t camera_device_ops = {
 	SET_METHOD(set_preview_window),
@@ -5915,30 +5915,30 @@ done:
 }
 
 static hw_module_methods_t camera_module_methods = {
-	open : HAL_camera_device_open
+	.open = HAL_camera_device_open
 };
 
 extern "C" {
 	struct camera_module HAL_MODULE_INFO_SYM = {
-		common : {
-			tag                : HARDWARE_MODULE_TAG,
-			module_api_version : CAMERA_MODULE_API_VERSION_1_0,
-			hal_api_version    : HARDWARE_HAL_API_VERSION,
-			id                 : CAMERA_HARDWARE_MODULE_ID,
-			name               : "SPRD Camera HAL",
-			author             : "Spreadtrum Corporation",
-			methods            : &camera_module_methods,
-			dso                : NULL,
-			reserved : { 0 }
+		.common = {
+			.tag                = HARDWARE_MODULE_TAG,
+			.module_api_version = CAMERA_MODULE_API_VERSION_1_0,
+			.hal_api_version    = HARDWARE_HAL_API_VERSION,
+			.id                 = CAMERA_HARDWARE_MODULE_ID,
+			.name               = "SPRD Camera HAL",
+			.author             = "Spreadtrum Corporation",
+			.methods            = &camera_module_methods,
+			.dso                = NULL,
+			.reserved = { 0 }
 		},
-		get_number_of_cameras : HAL_getNumberOfCameras,
-		get_camera_info       : HAL_getCameraInfo,
-		set_callbacks         : NULL,
-		get_vendor_tag_ops    : NULL,
-		open_legacy           : NULL,
-		set_torch_mode        : NULL,
-		init                  : NULL,
-		reserved              : { NULL, NULL, NULL, NULL, NULL }
+		.get_number_of_cameras = HAL_getNumberOfCameras,
+		.get_camera_info       = HAL_getCameraInfo,
+		.set_callbacks         = NULL,
+		.get_vendor_tag_ops    = NULL,
+		.open_legacy           = NULL,
+		.set_torch_mode        = NULL,
+		.init                  = NULL,
+		.reserved              = { NULL, NULL, NULL, NULL, NULL }
 	};
 }
 

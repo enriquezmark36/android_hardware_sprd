@@ -1229,16 +1229,24 @@ void SPRDAVCEncoder::onQueueFilled(OMX_U32 portIndex) {
 
             if (mStoreMetaData) {
                 unsigned int type = *(unsigned int *) inputData;
-                if (type == kMetadataBufferTypeCameraSource ||
-					type == kMetadataBufferTypeNativeHandleSource) {
+                if (type == kMetadataBufferTypeNativeHandleSource) {
+                    VideoNativeHandleMetadata *packet = (VideoNativeHandleMetadata *)inData;
+                    native_handle_t *nh = packet->pHandle;
+
+                    py_phy = (uint8_t *) nh->data[1];
+                    py = (uint8_t *) nh->data[2];
+                    width = nh->data[3];
+                    height = nh->data[4];
+                    x = nh->data[5];
+                    y = nh->data[6];
+                } else if (type == kMetadataBufferTypeCameraSource) {
                     py = (uint8_t*)(*((int *) inputData + 2));
                     py_phy = (uint8_t*)(*((int *) inputData + 1));
                     width = (uint32_t)(*((int *) inputData + 3));
                     height = (uint32_t)(*((int *) inputData + 4));
                     x = (uint32_t)(*((int *) inputData + 5));
                     y = (uint32_t)(*((int *) inputData + 6));
-                } else if (type == kMetadataBufferTypeGrallocSource ||
-						   type == kMetadataBufferTypeNativeHandleSource) {
+                } else if (type == kMetadataBufferTypeGrallocSource) {
                     if (mPbuf_yuv_v == NULL) {
                         int32 yuv_size = ((mVideoWidth+15)&(~15)) * ((mVideoHeight+15)&(~15)) *3/2;
                         if (mIOMMUEnabled) {

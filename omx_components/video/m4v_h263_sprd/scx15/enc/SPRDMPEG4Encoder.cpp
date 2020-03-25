@@ -930,15 +930,15 @@ void SPRDMPEG4Encoder::onQueueFilled(OMX_U32 portIndex) {
                     x = (uint32_t)(*((int *) inputData + 5));
                     y = (uint32_t)(*((int *) inputData + 6));
                 } else if (type == kMetadataBufferTypeNativeHandleSource) {
-					unsigned int *mataData = (unsigned int *) inputData;
-                    native_handle_t *nh = (native_handle_t*)(*(uint32_t *)mataData);
+                    VideoNativeHandleMetadata *packet = (VideoNativeHandleMetadata *)inData;
+                    native_handle_t *nh = packet->pHandle;
 
-                    py_phy = (uint8_t*)nh->data[1];
-                    py = (uint8_t*)nh->data[2];
-                    width = (uint32_t)nh->data[3];
-                    height = (uint32_t)nh->data[4];
-                    x = (uint32_t)nh->data[5];
-                    y = (uint32_t)nh->data[6];
+                    py_phy = (uint8_t *) nh->data[1];
+                    py = (uint8_t *) nh->data[2];
+                    width = nh->data[3];
+                    height = nh->data[4];
+                    x = nh->data[5];
+                    y = nh->data[6];
                 } else if (type == kMetadataBufferTypeGrallocSource) {
                     if (mPbuf_yuv_v == NULL) {
                         int32 yuv_size = ((mVideoWidth+15)&(~15)) * ((mVideoHeight+15)&(~15)) *3/2;

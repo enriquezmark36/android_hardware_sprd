@@ -27,6 +27,7 @@ LOCAL_C_INCLUDES := \
         external/jhead \
         external/sqlite/dist \
 	system/media/camera/include \
+	frameworks/native/include/media/openmax \
 	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include \
 	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/source/include \
 
@@ -267,6 +268,13 @@ endif
 
 ifdef CONFIG_CAMERA_ISP
 LOCAL_SHARED_LIBRARIES += libisp
+endif
+
+# Use media extension
+# Will use kMetadataBufferTypeNativeHandleSource
+# instead of kMetadataBufferTypeCameraSource
+ifeq ($(TARGET_USES_MEDIA_EXTENSIONS), true)
+  LOCAL_CFLAGS += -DUSE_MEDIA_EXTENSIONS
 endif
 
 include $(BUILD_SHARED_LIBRARY)

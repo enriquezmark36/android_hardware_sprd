@@ -300,6 +300,9 @@ private:
 	status_t                        checkFlashParameter(SprdCameraParameters& params);
 	void                            setCameraPrivateData(void);
 
+	void                            deallocateMeta();
+	int                             allocateMeta(uint8_t buf_cnt, int numFDs, int numInts);
+
 	/* These constants reflect the number of buffers that libqcamera requires
 	for preview and raw, and need to be updated when libqcamera
 	changes.
@@ -352,7 +355,13 @@ private:
 	sp<AshmemPool>                  mJpegHeap;
 	uint32_t                        mJpegHeapSize;
 	uint32_t                        mFDAddr;
-	camera_memory_t                 *mMetadataHeap;
+
+	camera_memory_t                 *mMetadataHeap[kPreviewBufferCount];
+	uint8_t                         mMetaBufCount;
+#ifdef USE_MEDIA_EXTENSIONS
+	native_handle_t                 *mNativeHandleHeap[kPreviewBufferCount];
+#endif
+
 	sprd_camera_memory_t            *mReDisplayHeap;
 	//TODO: put the picture dimensions in the CameraParameters object;
 	SprdCameraParameters            mParameters;

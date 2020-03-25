@@ -38,6 +38,12 @@
 #include "SprdCameraHardwareInterface.h"
 #include "SprdOEMCamera.h"
 
+#ifdef USE_MEDIA_EXTENSIONS
+#include <media/hardware/HardwareAPI.h>
+#else
+#define METADATA_SIZE 28/* (7 * 4) */
+#endif
+
 #ifdef CONFIG_CAMERA_ISP
 extern "C" {
 #include "isp_video.h"
@@ -56,7 +62,11 @@ namespace android {
 #define PRINT_TIME 0
 #define ROUND_TO_PAGE(x) (((x)+0xfff)&~0xfff)
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(*x))
-#define METADATA_SIZE 28/* (7 * 4) */
+
+//addr_phy, addr_vir, width, height, x, y
+// workaround the missing fd with another int (6 + 1) = 7
+#define VIDEO_METADATA_NUM_INTS 7
+
 #define SET_PARM(x,y) do {\
 			LOGV("%s: set camera param: %s, %d", __func__, #x, y);\
 			camera_set_parm (x, y, NULL, NULL);\
@@ -149,6 +159,70 @@ const camera_info_t SprdCameraHardware::kCameraInfo3[] = {
 		CAMERA_INFO_HAL1
 	}
 };
+
+
+int SprdCameraHardware::allocateMeta(uint8_t buf_cnt, int numFDs, int numInts)
+{
+	int i = 0;
+
+	for (; i < buf_cnt; i++) {
+#ifdef USE_MEDIA_EXTENSIONS
+		mMetadataHeap[i] = mGetMemory_cb(-1, sizeof(VideoNativeHandleMetadata), 1, NULL);
+#else
+		mMetadataHeap[i] = mGetMemory_cb(-1, METADATA_SIZE, 1, NULL);
+#endif
+		if (!mMetadataHeap[i]) {
+			LOGE("allocation of video metadata failed.");
+			goto err_clean_metadata;
+		}
+#ifdef USE_MEDIA_EXTENSIONS
+		mNativeHandleHeap[i] = native_handle_create(numFDs, numInts);
+		if (mNativeHandleHeap[i] == NULL) {
+			LOGE("Error in getting video native handle");
+			mMetadataHeap[i]->release(mMetadataHeap[i]);
+			goto err_clean_metadata;
+		}
+#endif
+	}
+	mMetaBufCount = buf_cnt;
+	return NO_ERROR;
+
+/*
+ * XXXX: This is actually the deallocateMeta() method
+ * so could we use that instead? I'm worrying about threads
+ * and non-atomic operations.
+ */
+err_clean_metadata:
+	while (i--) {
+#ifdef USE_MEDIA_EXTENSIONS
+		if (mNativeHandleHeap[i]) {
+			native_handle_delete(mNativeHandleHeap[i]);
+			mNativeHandleHeap[i] = NULL;
+		}
+#endif
+		mMetadataHeap[i]->release(mMetadataHeap[i]);
+		mMetadataHeap[i] = NULL;
+	}
+	return NO_MEMORY;
+}
+
+void SprdCameraHardware::deallocateMeta()
+{
+	for (int i = 0; i < mMetaBufCount; i++) {
+#ifdef USE_MEDIA_EXTENSIONS
+		native_handle_t *nh = mNativeHandleHeap[i];
+		mNativeHandleHeap[i] = NULL;
+
+		if (NULL != nh)
+			native_handle_delete(nh);
+		else
+			LOGE("native handle not available");
+#endif
+		mMetadataHeap[i]->release(mMetadataHeap[i]);
+		mMetadataHeap[i] = NULL;
+	}
+	mMetaBufCount = 0;
+}
 
 int SprdCameraHardware::getPropertyAtv()
 {
@@ -267,7 +341,6 @@ SprdCameraHardware::SprdCameraHardware(int cameraId)
 	mSubRawHeapNum(0),
 	mJpegHeapSize(0),
 	mFDAddr(0),
-	mMetadataHeap(NULL),
 	mParameters(),
 	mSetParameters(),
 	mSetParametersBak(),
@@ -342,6 +415,12 @@ SprdCameraHardware::SprdCameraHardware(int cameraId)
 	memset(&mRawHeapInfoBak, 0, sizeof(mRawHeapInfoBak));
 	mRawHeapBakUseFlag = 0;
 
+	memset(&mMetadataHeap, 0, sizeof(mMetadataHeap));
+	mMetaBufCount = 0;
+#ifdef USE_MEDIA_EXTENSIONS
+	memset(&mNativeHandleHeap, 0, sizeof(mNativeHandleHeap));
+#endif
+
 	setCameraState(SPRD_INIT, STATE_CAMERA);
 
 	if (!mGrallocHal) {
@@ -412,13 +491,7 @@ void SprdCameraHardware::release()
 		LOGI("stopping camera.");
 		if (CAMERA_SUCCESS != camera_stop(camera_cb, this)) {
 			setCameraState(SPRD_ERROR, STATE_CAMERA);
-			if(NULL != mMetadataHeap){
-				if(NULL != mMetadataHeap->release){
-					LOGV("freePreviewMem start release mMetadataHeap");
-					mMetadataHeap->release(mMetadataHeap);
-					mMetadataHeap = NULL;
-				}
-			}
+			deallocateMeta();
 			mReleaseFLag = true;
 			LOGE("release X: fail to camera_stop().");
 			return;
@@ -427,13 +500,7 @@ void SprdCameraHardware::release()
 		WaitForCameraStop();
 	}
 
-	if(NULL != mMetadataHeap){
-		if(NULL != mMetadataHeap->release){
-			LOGV("freePreviewMem start release mMetadataHeap");
-			mMetadataHeap->release(mMetadataHeap);
-			mMetadataHeap = NULL;
-		}
-	}
+	deallocateMeta();
 	deinitCapture();
 
 	mCbPrevDataBusyLock.lock();
@@ -808,7 +875,11 @@ void SprdCameraHardware::releaseRecordingFrame(const void *opaque)
 {
 	LOGI("releaseRecordingFrame E. ");
 	uint8_t *addr = (uint8_t *)opaque;
-	uint32_t index = (addr - (uint8_t *)mMetadataHeap->data) / (METADATA_SIZE);
+	uint32_t index = 0;
+
+	for (index = 0; index < mMetaBufCount; index++)
+		if (mMetadataHeap[index]->data == opaque)
+			break;
 
 	Mutex::Autolock pbl(&mPrevBufLock);
 
@@ -823,13 +894,18 @@ void SprdCameraHardware::releaseRecordingFrame(const void *opaque)
 		uint32_t *paddr = NULL;
 
 		if (mIsStoreMetaData) {
+#ifdef USE_MEDIA_EXTENSIONS
+			VideoNativeHandleMetadata *packet = (VideoNativeHandleMetadata *) opaque;
+			paddr = (uint32_t *) packet->pHandle->data[1];
+			vaddr = (uint32_t *) packet->pHandle->data[2];
+#else
 			paddr = (uint32_t *) *((uint32_t*)addr + 1);
 			vaddr = (uint32_t *) *((uint32_t*)addr + 2);
 
 			if (camera_get_rot_set()) {
 				index += kPreviewBufferCount;
 			}
-
+#endif
 		} else {
 			for (index=0; index < mPreviewHeapNum; index++) {
 				if ((uint32_t)addr == mPreviewHeapArray_vir[index])
@@ -2004,8 +2080,8 @@ status_t SprdCameraHardware::storeMetaDataInBuffers(bool enable)
 		return INVALID_OPERATION;
 	}
 
-	if (NULL == mMetadataHeap) {
-		if (NULL == (mMetadataHeap = mGetMemory_cb(-1, METADATA_SIZE, kPreviewBufferCount, NULL))) {
+	if (mMetaBufCount < kPreviewBufferCount) {
+		if ((allocateMeta(kPreviewBufferCount, 0, VIDEO_METADATA_NUM_INTS)) != NO_ERROR) {
 			LOGE("fail to alloc memory for the metadata for storeMetaDataInBuffers.");
 			return INVALID_OPERATION;
 		}
@@ -2821,9 +2897,7 @@ bool SprdCameraHardware::allocatePreviewMemByGraphics()
 					return -1;
 				}
 				LOGI("MemoryHeapIon::Get_mm_ion: %d addr 0x%x size 0x%x",i, ion_addr, ion_size);
-				mPreviewBufferHandle[i] = buffer_handle;
 				mPreviewHeapArray_phy[i] = (uint32_t)ion_addr;
-				mPreviewHeapArray_vir[i] = (uint32_t)private_h->base;
 				/*mPreviewHeapArray_size[i] = ion_size;*/
 			} else {
 				int iova_addr=0,iova_size=0;
@@ -2832,11 +2906,13 @@ bool SprdCameraHardware::allocatePreviewMemByGraphics()
 					LOGE("allocatePreviewMemByGraphics: Get_mm_iova error");
 					return -1;
 				}
-				mPreviewBufferHandle[i] = buffer_handle;
 				mPreviewHeapArray_phy[i] = (uint32_t)iova_addr;
-				mPreviewHeapArray_vir[i] = (uint32_t)private_h->base;
 				mPreviewHeapArray_size[i]=iova_size;
 			}
+
+			mPreviewBufferHandle[i] = buffer_handle;
+			mPreviewHeapArray_vir[i] = (uintptr_t)private_h->base;
+
 			LOGI("allocatePreviewMemByGraphics: phyaddr:0x%x, base:0x%x, size:0x%x, stride:0x%x ",
 				mPreviewHeapArray_phy[i],private_h->base,private_h->size, stride);
 			mCancelBufferEb[i] = 0;
@@ -4369,7 +4445,33 @@ void SprdCameraHardware::receivePreviewFrame(camera_frame_type *frame)
 			}
 			if (mIsStoreMetaData) {
 				uint32_t tmpIndex = frame->order_buf_id;
-				uint32_t *data = (uint32_t *)mMetadataHeap->data + offset * METADATA_SIZE / 4;
+#ifdef USE_MEDIA_EXTENSIONS
+				native_handle_t *nh = mNativeHandleHeap[offset];
+				if (!nh) {
+					LOGE("Error in getting video native handle");
+					return;
+				}
+
+				/*
+				 * The first item should be the share_fd from
+				 * mPreviewBufferHandle[offset] but for this version
+				 * "that" may be NULL or invalid so fill in the missing
+				 * fd with a 0
+				 * Workaround should work for 32 bits, not sure about 64.
+				 */
+				nh->data[0] = 0;
+				nh->data[1] = frame->buffer_phy_addr;
+				nh->data[2] = (int) frame->buf_Virt_Addr;
+				nh->data[3] = width;
+				nh->data[4] = height;
+				nh->data[5] = mPreviewWidth_trimx;
+				nh->data[6] = mPreviewHeight_trimy;
+
+				VideoNativeHandleMetadata *packet = (VideoNativeHandleMetadata *)mMetadataHeap[offset]->data;
+				packet->eType = kMetadataBufferTypeNativeHandleSource;
+				packet->pHandle = nh;
+#else
+				uint32_t *data = (uint32_t *)mMetadataHeap[offset]->data;
 				*data++ = kMetadataBufferTypeCameraSource;
 				*data++ = frame->buffer_phy_addr;
 				*data++ = (uint32_t)frame->buf_Virt_Addr;
@@ -4377,6 +4479,7 @@ void SprdCameraHardware::receivePreviewFrame(camera_frame_type *frame)
 				*data++ = height;
 				*data++ = mPreviewWidth_trimx;
 				*data = mPreviewHeight_trimy;
+#endif
 				{
 					Mutex::Autolock l(&mCbPrevDataBusyLock);
 					if(!isPreviewing()) return;
@@ -4384,7 +4487,7 @@ void SprdCameraHardware::receivePreviewFrame(camera_frame_type *frame)
 						tmpIndex = mPreviewDcamAllocBufferCnt - 1;
 					}
 					mPreviewHeapArray[tmpIndex]->busy_flag = true;
-					mData_cb_timestamp(timestamp, CAMERA_MSG_VIDEO_FRAME, mMetadataHeap, offset, mUser);
+					mData_cb_timestamp(timestamp, CAMERA_MSG_VIDEO_FRAME, mMetadataHeap[offset], 0, mUser);
 					mPreviewHeapArray[tmpIndex]->busy_flag = false;
 				}
 			} else {

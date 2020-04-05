@@ -1920,7 +1920,7 @@ int camera_init_af_mode(uint32_t af_mode, uint32_t *skip_mode, uint32_t *skip_nu
 		camera_param_to_isp(ISP_CTRL_AF_MODE,af_mode,&af_mode);
 		ret = isp_ioctl(ISP_CTRL_AF_MODE,(void *)&af_mode);
 	} else {
-		CMR_LOGW ("set af: sensor not support\n");
+		ret = Sensor_Ioctl(SENSOR_IOCTL_AF_ENABLE, (uint32_t) af_mode);
 	}
 
 	return ret;

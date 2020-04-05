@@ -827,6 +827,9 @@ LOCAL void Sensor_PowerOn_Ex(uint32_t sensor_id)
 
 	if (PNULL != power_func) {
 		power_func(1);
+#if defined(CONFIG_CAMERA_IOCTL_IOCTL_HAS_POWER_ONOFF)
+		_Sensor_Device_PowerON(1);
+#endif
 	} else {
 		Sensor_PowerDown(power_down);
 		Sensor_SetVoltage(dvdd_val, avdd_val, iovdd_val);

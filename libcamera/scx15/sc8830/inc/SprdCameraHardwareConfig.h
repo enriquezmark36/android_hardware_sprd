@@ -42,8 +42,13 @@ enum {
 
 enum {
 	CAMERA_SCENE_MODE_AUTO = 0,
-	CAMERA_SCENE_MODE_PORTRAIT,
-	CAMERA_SCENE_MODE_LANDSCAPE,
+	CAMERA_SCENE_MODE_NIGHT,
+	CAMERA_SCENE_MODE_ACTION, //not support
+	CAMERA_SCENE_MODE_PORTRAIT, //not support
+	CAMERA_SCENE_MODE_LANDSCAPE, //not support
+	CAMERA_SCENE_MODE_NORMAL,
+	CAMERA_SCENE_MODE_HDR,
+#ifdef CONFIG_CAMERA_KANAS
 	CAMERA_SCENE_MODE_SPORTS,
 	CAMERA_SCENE_MODE_PARTY,
 	CAMERA_SCENE_MODE_BEACH,
@@ -54,8 +59,7 @@ enum {
 	CAMERA_SCENE_MODE_CANDLELIGHT,
 	CAMERA_SCENE_MODE_FIREWORK,
 	CAMERA_SCENE_MODE_BACKLIGHT,
-	CAMERA_SCENE_MODE_NIGHT,
-	CAMERA_SCENE_MODE_HDR,
+#endif
 	CAMERA_SCENE_MODE_MAX
 };
 
@@ -162,6 +166,10 @@ enum {
 	CAMERA_ISO_400,
 	CAMERA_ISO_800,
 	CAMERA_ISO_1600,
+#ifdef CONFIG_CAMERA_KANAS
+	CAMERA_ISO_50,
+	CAMERA_ISO_300,
+#endif
 	CAMERA_ISO_MAX
 };
 
@@ -238,18 +246,6 @@ const struct str_map wb_map[] = {
 	{NULL, 0 }
 };
 
-#ifdef CONFIG_CAMERA_KANAS
-const struct str_map effect_map[] = {
-	{"none",            CAMERA_EFFECT_NONE},
-	{"mono",            CAMERA_EFFECT_MONO},
-	{"negative",        CAMERA_EFFECT_NEGATIVE},
-	{"sepia",           CAMERA_EFFECT_SEPIA},
-	{"red-tint",         CAMERA_EFFECT_RED},
-	{"green-tint",       CAMERA_EFFECT_GREEN},
-	{"blue-tint",        CAMERA_EFFECT_BLUE},
-	{NULL,              0}
-};
-#else
 const struct str_map effect_map[] = {
 	{"none",            CAMERA_EFFECT_NONE},
 	{"mono",            CAMERA_EFFECT_MONO},
@@ -260,15 +256,24 @@ const struct str_map effect_map[] = {
 	{"negative",        CAMERA_EFFECT_NEGATIVE},
 	{"sepia",           CAMERA_EFFECT_SEPIA},
 	{"cold",            CAMERA_EFFECT_BLUE},
+#ifdef CONFIG_CAMERA_KANAS
+	{"red-tint",        CAMERA_EFFECT_RED},
+	{"green-tint",      CAMERA_EFFECT_GREEN},
+	{"blue-tint",       CAMERA_EFFECT_BLUE},
+	{"solarize",        CAMERA_EFFECT_YELLOW},
+#endif
 	{NULL,              0}
 };
-#endif
 
-#ifdef CONFIG_CAMERA_KANAS
 const struct str_map scene_mode_map[] = {
 	{"auto",            CAMERA_SCENE_MODE_AUTO},
+	{"night",           CAMERA_SCENE_MODE_NIGHT},
 	{"portrait",        CAMERA_SCENE_MODE_PORTRAIT},
 	{"landscape",       CAMERA_SCENE_MODE_LANDSCAPE},
+	{"action",          CAMERA_SCENE_MODE_ACTION},
+	{"normal",          CAMERA_SCENE_MODE_NORMAL},
+	{"hdr",             CAMERA_SCENE_MODE_HDR},
+#ifdef CONFIG_CAMERA_KANAS
 	{"sports",          CAMERA_SCENE_MODE_SPORTS},
 	{"party",           CAMERA_SCENE_MODE_PARTY},
 	{"beach",           CAMERA_SCENE_MODE_BEACH},
@@ -278,23 +283,10 @@ const struct str_map scene_mode_map[] = {
 	{"text",            CAMERA_SCENE_MODE_TEXT},
 	{"candlelight",     CAMERA_SCENE_MODE_CANDLELIGHT},
 	{"firework",        CAMERA_SCENE_MODE_FIREWORK},
-	{"backlight",       CAMERA_SCENE_MODE_BACKLIGHT},
-	{"night",           CAMERA_SCENE_MODE_NIGHT},
-	{"hdr",             CAMERA_SCENE_MODE_HDR},
-	{NULL,              0}
-};
-#else
-const struct str_map scene_mode_map[] = {
-	{"auto",            CAMERA_SCENE_MODE_AUTO},
-	{"night",           CAMERA_SCENE_MODE_NIGHT},
-	{"portrait",        CAMERA_SCENE_MODE_PORTRAIT},
-	{"landscape",       CAMERA_SCENE_MODE_LANDSCAPE},
-	{"action",          CAMERA_SCENE_MODE_ACTION},
-	{"normal",          CAMERA_SCENE_MODE_NORMAL},
-	{"hdr",             CAMERA_SCENE_MODE_HDR},
-	{NULL,              0}
-};
+	{"back-light",       CAMERA_SCENE_MODE_BACKLIGHT},
 #endif
+	{NULL,              0}
+};
 
 const struct str_map camera_id_map[] = {
 	{"back_camera",     CAMERA_CAMERA_ID_BACK},
@@ -365,6 +357,10 @@ const struct str_map iso_map[] = {
 	{"400",             CAMERA_ISO_400},
 	{"800",             CAMERA_ISO_800},
 	{"1600",            CAMERA_ISO_1600},
+#ifdef CONFIG_CAMERA_KANAS
+	{"50",              CAMERA_ISO_50},
+	{"300",             CAMERA_ISO_300},
+#endif
 	{NULL,              0}
 };
 
@@ -594,8 +590,13 @@ struct config_element sprd_back_camera_hardware_config[] = {
 #endif
 	{"preview-size", "640x480"},
 #else
+#ifdef CONFIG_CAMERA_KANAS
+	{"preview-size-values", "1280x720,960x540,720x540,800x480,720x480,640x480,352x288,320x240,176x144"},
+	{"preview-size", "800x480"},
+#else
 	{"preview-size-values", "1920x1088,1280x960,1280x720,960x540,720x540,720x480,640x480,352x288,320x240,176x144"},
 	{"preview-size", "640x480"},
+#endif
 #endif
 #ifdef CONFIG_CAMERA_KANAS
 	{"video-size-values", ""},
@@ -611,16 +612,23 @@ struct config_element sprd_back_camera_hardware_config[] = {
 	{"picture-format-values", "jpeg"},
 	{"picture-format", "jpeg"},
 	{"jpeg-quality", "100"},
+#ifdef CONFIG_CAMERA_KANAS
+	{"preview-frame-rate-values", "7,10,12,15,25,30"},
+	{"preview-frame-rate", "30"},
+	{"preview-fps-range-values", "(7000,30000)"},
+	{"preview-fps-range", "7000,30000"},
+#else
 	{"preview-frame-rate-values", "10,15,20,25,30,31"},
 	{"preview-frame-rate", "30"},
 	{"preview-fps-range-values", "(1000,30000)"},
 	{"preview-fps-range", "1000,30000"},
+#endif
 	{"jpeg-thumbnail-size-values", "640x480,0x0"},
 	{"jpeg-thumbnail-width","640"},
 	{"jpeg-thumbnail-height", "480"},
 	{"jpeg-thumbnail-quality", "70"},
 #ifdef CONFIG_CAMERA_KANAS
-	{"effect-values", "none,mono,red-tint,green-tint,blue-tint,negative,sepia"},
+	{"effect-values", "none,mono,red-tint,green-tint,blue-tint,negative,sepia,solarize"},
 #else
     {"effect-values", "none,mono,negative,sepia,cold,antique"},
 #endif
@@ -648,7 +656,7 @@ struct config_element sprd_back_camera_hardware_config[] = {
 	{"max-contrast", "6"},
 	{"contrast-values", "0,1,2,3,4,5,6"},
 	{"contrast", "3"}  ,
-#if 0
+#if CONFIG_CAMERA_KANAS
 	{"saturation-supported", "true"},
 	{"saturation-values", "0,1,2,3,4,5,6"},
 	{"saturation", "3"},
@@ -707,7 +715,11 @@ struct config_element sprd_back_camera_hardware_config[] = {
 #endif
 	{"iso-supported", "true"},
 	{"max-iso", "5"},
-	{"iso-values", "auto,100,200,400,800,1600"},
+#ifdef CONFIG_CAMERA_KANAS
+	{"iso-values", "auto,50,100,200,300,400"},
+#else
+	{"iso-values", "auto,50,100,200,400,800,1600"},
+#endif
 	{"iso", "auto"},
 	{"smile-snap-mode","0"},
 	{"hdr-supported","true"},

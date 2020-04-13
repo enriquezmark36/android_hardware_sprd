@@ -81,6 +81,12 @@ LOCAL_CFLAGS += -DHIDL_INVALID_FD
 LOCAL_CFLAGS += -DHIDL_NO_FREE_FB
 endif
 
+# Tries to make HWC layer buffers be contiguous
+# will revert to virtual memory if it fails.
+ifeq ($(TARGET_FORCE_HWC_CONTIG), true)
+LOCAL_CFLAGS += -DFORCE_HWC_CONTIG
+endif
+
 ifeq ($(TARGET_USE_3_FRAMEBUFFER), true)
 LOCAL_CFLAGS += -DUSE_3_FRAMEBUFFER
 endif

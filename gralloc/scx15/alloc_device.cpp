@@ -263,6 +263,22 @@ static int gralloc_alloc_buffer(alloc_device_t* dev, size_t size, int usage, buf
         {
             ion_heap_mask = ION_HEAP_ID_MASK_OVERLAY;
         }
+#ifdef FORCE_HWC_CONTIG
+        /*
+         * Addendum 1: When having a buffer for use with the HWComposer
+         * make sure it's always contiguous so that GSP can work its
+         * wonders.
+         *
+         * Addendum 3: HWC buffers are different from the GRALLOC_USAGE_OVERLAY_BUFFER
+         * SPRDHWC uses. HWC buffers handle all the layers sent to HWC which takes
+         * a lot of memory (15 MB overall average on 480x800).
+         * Thus, use the MM area which should be large enough.
+         */
+        else if (usage & GRALLOC_USAGE_HW_COMPOSER)
+        {
+            ion_heap_mask = ION_HEAP_ID_MASK_MM;
+        }
+#endif
         else
         {
             ion_heap_mask = ION_HEAP_ID_MASK_SYSTEM;
@@ -274,6 +290,22 @@ static int gralloc_alloc_buffer(alloc_device_t* dev, size_t size, int usage, buf
         }
 
         ret = ion_alloc(m->ion_client, size, 0, ion_heap_mask, ion_flag, &ion_hnd);
+#ifdef FORCE_HWC_CONTIG
+        /*
+         * Addendum 2: If the assumption on Addendum 1 fails, revert back to
+         * the virtual memory allocation (which not guaranteed to be contiguous).
+         * The components that depends on these usage bits should
+         * _NOT_ expect to always receive a contiguous memory.
+         */
+        if (ret && (usage & GRALLOC_USAGE_HW_COMPOSER) &&
+            !(usage & (GRALLOC_USAGE_VIDEO_BUFFER|GRALLOC_USAGE_CAMERA_BUFFER|GRALLOC_USAGE_OVERLAY_BUFFER))
+        ){
+            ALOGW("CMA allocation failed, using virtual memory allocation instead.");
+            ion_heap_mask = ION_HEAP_ID_MASK_SYSTEM;
+            ret = ion_alloc(m->ion_client, size, 0, ion_heap_mask, ion_flag, &ion_hnd);
+        }
+#endif
+
         if ( ret != 0)
         {
             AERR("Failed to ion_alloc from ion_client:%d", m->ion_client);
@@ -301,7 +333,8 @@ static int gralloc_alloc_buffer(alloc_device_t* dev, size_t size, int usage, buf
         hnd = new private_handle_t( private_handle_t::PRIV_FLAGS_USES_ION, usage, size, (int)cpu_ptr, private_handle_t::LOCK_STATE_MAPPED );
         if ( NULL != hnd )
         {
-            if(ion_heap_mask == ION_HEAP_CARVEOUT_MASK)
+            // Mark both MM and OVERLAY that are contiguously allocated
+            if ((ion_heap_mask == ION_HEAP_ID_MASK_MM) || (ion_heap_mask == ION_HEAP_ID_MASK_OVERLAY))
             {
                 hnd->flags=(private_handle_t::PRIV_FLAGS_USES_ION)|(private_handle_t::PRIV_FLAGS_USES_PHY);
             }

@@ -45,7 +45,6 @@
 
 using namespace android;
 
-
 #ifdef TRANSFORM_USE_DCAM
 OSDTransform::OSDTransform(FrameBufferInfo *fbInfo)
     :  mL(NULL),
@@ -333,6 +332,7 @@ static void test_set_y(char* base,uint32_t w,uint32_t h)
         r++;
     }
 }
+
 int SprdUtil::openGSPDevice()
 {
     hw_module_t const* pModule;
@@ -418,6 +418,37 @@ AllocGFXBuffer:
     return 0;
 }
 
+/*
+func:rotationType_convert
+desc: rotation angle covert from andriod hal type to gsp type
+return: gsp type
+*/
+GSP_ROT_ANGLE_E SprdUtil::rotationType_convert(int angle)
+{
+    switch(angle) {
+        case 0:
+            return GSP_ROT_ANGLE_0;
+        case HAL_TRANSFORM_FLIP_H:// 1
+            return GSP_ROT_ANGLE_180_M;
+        case HAL_TRANSFORM_FLIP_V:// 2
+            return GSP_ROT_ANGLE_0_M;
+        case HAL_TRANSFORM_ROT_180:// 3
+            return GSP_ROT_ANGLE_180;
+        case HAL_TRANSFORM_ROT_90:// 4
+        default:
+            return GSP_ROT_ANGLE_270;
+        case (HAL_TRANSFORM_ROT_90|HAL_TRANSFORM_FLIP_H)://5
+            return GSP_ROT_ANGLE_270_M;
+        case (HAL_TRANSFORM_ROT_90|HAL_TRANSFORM_FLIP_V)://6
+            return GSP_ROT_ANGLE_90_M;
+        case HAL_TRANSFORM_ROT_270:// 7
+            return GSP_ROT_ANGLE_90;
+    }
+
+    ALOGE("util[%04d] err:unknow src angle !",__LINE__);
+    return GSP_ROT_ANGLE_0;
+}
+
 int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t* buffer1, private_handle_t* buffer2)
 {
     int32_t ret = 0;
@@ -433,6 +464,10 @@ int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t*
     int buffersize_layer1 = 0;
     int buffersize_layer2 = 0;
     int buffersize_layert = 0;//scaling up twice temp
+#ifdef GSP_MAX_OSD_LAYERS
+    bool reuse_dest = false;
+    bool force_RGB_dest = false;
+#endif
 
     queryDebugFlag(&mDebugFlag);
 
@@ -448,17 +483,58 @@ int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t*
         }
     }
 
+#ifdef GSP_MAX_OSD_LAYERS
+    /*
+     * NOTE: Add an extra semantic that a absent l1 (or GSP layer0)
+     * but present l2 (or GSP layer1) with the second output
+     * buffer (the buffer2 variable) is NULL, we are going to re-use the
+     * destination config as the layer 0. In effect, we're blending
+     * l2 on top of the previous result.
+     *
+     * NOTE: buffer2 when only l2 is present means that we have
+     * a single OSD layer that needs to be clipped, translated or
+     * rotated. (note again that GSP layer1 does not support scaling)
+     */
+    if (l2 && !l1 && !buffer2) {
+	ALOGI_IF(mDebugFlag,"Using previous results as layer0");
+	reuse_dest = true;
+    }
+    /*
+     * Another extra semantics to force YUV+RGB blending to RGB output
+     * Instead of expecting the buffer on buffer1, we expect buffer1
+     * to be NULL and buffer2 to be valid.
+     */
+    if (l2 && l1 && !buffer1) {
+	ALOGI_IF(mDebugFlag,"Forcing a RGB Layer Output");
+	force_RGB_dest = true;
+    }
+#endif
+
     /*
      *  Composer Video layer and OSD layer,
      *  Or transform Video layer or OSD layer
      * */
     if (l1 != NULL)
     {
+#ifdef GSP_MAX_OSD_LAYERS
+        // This addtional semantic Forces the output of YUV layer blending
+        // to be always RGB relies on the fact that
+        // the buffer is on buffer2 and rather on buffer1
+        buffer = (force_RGB_dest) ? buffer2 : buffer1;
+#else
         buffer = buffer1;
+#endif
+
     }
     else if (l1 == NULL && l2 != NULL)
     {
-        buffer = buffer2;
+#ifdef GSP_MAX_OSD_LAYERS
+        // This addtional semantic requires that
+        // the buffer is on buffer1 and buffer2 to be NULL
+        buffer = (reuse_dest) ? buffer1 : buffer2;
+#else
+        buffer = buffer1;
+#endif
     }
 
     if (buffer == NULL)
@@ -468,11 +544,17 @@ int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t*
     }
 
 
-    GSP_CONFIG_INFO_T gsp_cfg_info;
+    static GSP_CONFIG_INFO_T gsp_cfg_info;
     uint32_t video_check_result = 0;
     uint32_t osd_check_result = 0;
 
+#ifdef GSP_MAX_OSD_LAYERS
+    if (!reuse_dest)
+	memset(&gsp_cfg_info,0,sizeof(gsp_cfg_info));
+#else
     memset(&gsp_cfg_info,0,sizeof(gsp_cfg_info));
+#endif
+
 
     if(l1)
     {
@@ -523,6 +605,12 @@ int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t*
             case HAL_PIXEL_FORMAT_YV12:
                 gsp_cfg_info.layer0_info.img_format = GSP_SRC_FMT_YUV420_3P;//?
                 break;
+            case HAL_PIXEL_FORMAT_RGBA_8888:
+                gsp_cfg_info.layer0_info.img_format = GSP_SRC_FMT_ARGB888;
+                break;
+            case HAL_PIXEL_FORMAT_RGBX_8888:
+                gsp_cfg_info.layer0_info.img_format = GSP_SRC_FMT_RGB888;
+                break;
             default:
                 ALOGE("SprdUtil::composerLayers[%d],private_h1->format:%d not supported",__LINE__,private_h1->format);
                 return -1;
@@ -557,37 +645,23 @@ int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t*
             gsp_cfg_info.layer0_info.des_rect.st_y = FBRect1->y;
             gsp_cfg_info.layer0_info.des_rect.rect_w = FBRect1->w;
             gsp_cfg_info.layer0_info.des_rect.rect_h = FBRect1->h;
-            gsp_cfg_info.layer0_info.alpha = 0xff;
+            gsp_cfg_info.layer0_info.alpha = layer1->planeAlpha;
 
-            switch(layer1->transform) {
-            case 0:
-                gsp_cfg_info.layer0_info.rot_angle = GSP_ROT_ANGLE_0;
-                break;
-            case HAL_TRANSFORM_FLIP_H:// 1
-                gsp_cfg_info.layer0_info.rot_angle = GSP_ROT_ANGLE_180_M;
-                break;
-            case HAL_TRANSFORM_FLIP_V:// 2
-                gsp_cfg_info.layer0_info.rot_angle = GSP_ROT_ANGLE_0_M;
-                break;
-            case HAL_TRANSFORM_ROT_180:// 3
-                gsp_cfg_info.layer0_info.rot_angle = GSP_ROT_ANGLE_180;
-                break;
-            case HAL_TRANSFORM_ROT_90:// 4
-            default:
-                gsp_cfg_info.layer0_info.rot_angle = GSP_ROT_ANGLE_270;
-                break;
-            case (HAL_TRANSFORM_ROT_90|HAL_TRANSFORM_FLIP_H)://5
-                gsp_cfg_info.layer0_info.rot_angle = GSP_ROT_ANGLE_90_M;
-                break;
-            case (HAL_TRANSFORM_ROT_90|HAL_TRANSFORM_FLIP_V)://6
-                gsp_cfg_info.layer0_info.rot_angle = GSP_ROT_ANGLE_270_M;
-                break;
-            case HAL_TRANSFORM_ROT_270:// 7
-                gsp_cfg_info.layer0_info.rot_angle = GSP_ROT_ANGLE_90;
-                break;
+            // XXXX: I have not seen a video layer that had HWC_BLENDING_PREMULT set.
+            // So, this line below is untested.
+            gsp_cfg_info.layer0_info.pmargb_mod = 1;
+
+
+            gsp_cfg_info.layer0_info.rot_angle = rotationType_convert(layer1->transform);
+
+            if ((gsp_cfg_info.layer0_info.img_format == GSP_SRC_FMT_ARGB888) ||
+                (gsp_cfg_info.layer0_info.img_format == GSP_SRC_FMT_RGB888)){
+                gsp_cfg_info.layer0_info.pitch = private_h1->stride;
+            } else {
+                gsp_cfg_info.layer0_info.pitch = private_h1->width;
             }
+
             //gsp_cfg_info.layer0_info.pitch = context->src_img.w;
-            gsp_cfg_info.layer0_info.pitch = private_h1->width;
             gsp_cfg_info.layer0_info.layer_en = 1;
 
 #if 0 //add for test//
@@ -627,7 +701,65 @@ int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t*
         {
             ALOGE("GSP process layer1 L%d,video layer use virtual addr!",__LINE__);
         }
+    }
+#ifdef GSP_MAX_OSD_LAYERS
+    else if (reuse_dest) {
+        //GSP layer0 config as former output, layer1 process l2
+        gsp_cfg_info.layer0_info.pitch = gsp_cfg_info.layer_des_info.pitch;
 
+        gsp_cfg_info.layer0_info.clip_rect.st_x = 0;
+        gsp_cfg_info.layer0_info.clip_rect.st_y = 0;
+        gsp_cfg_info.layer0_info.clip_rect.rect_w = mFBInfo->fb_width;
+        gsp_cfg_info.layer0_info.clip_rect.rect_h = mFBInfo->fb_height;
+        gsp_cfg_info.layer0_info.des_rect = gsp_cfg_info.layer0_info.clip_rect;
+
+        gsp_cfg_info.layer0_info.src_addr = gsp_cfg_info.layer_des_info.src_addr;
+        gsp_cfg_info.layer0_info.img_format = (GSP_LAYER_SRC_DATA_FMT_E) gsp_cfg_info.layer_des_info.img_format;
+
+        gsp_cfg_info.layer0_info.endian_mode = gsp_cfg_info.layer_des_info.endian_mode;
+        gsp_cfg_info.layer0_info.alpha = 0xff;
+        gsp_cfg_info.layer0_info.pmargb_en = 1;
+        gsp_cfg_info.layer0_info.pmargb_mod = 1;
+        gsp_cfg_info.layer0_info.rot_angle = GSP_ROT_ANGLE_0;
+        gsp_cfg_info.layer0_info.layer_en = 1;
+    }
+#endif
+    else if (l2) {
+        /*
+         * DISPC may not have known what would be the exact size of
+         * the output blitting and just expects a buffer at most the FB size.
+         * When the output is smaller, there may be gitches or artifacts.
+         * When GSP layer1 is present but not full screen, we output
+         * a 'cleaned' blit at the FB size by using the pallet mode.
+         */
+        struct sprdRect *rect = l2->getSprdSRCRect();
+        if (((uint32_t)mFBInfo->fb_width != rect->w) ||
+            ((uint32_t)mFBInfo->fb_height != rect->h)) {
+            ALOGI_IF(mDebugFlag,
+                    "GSP process layer0, L1 == NULL, use pallet to clean transparency. LINE%d",__LINE__);
+
+            gsp_cfg_info.layer0_info.pallet_en = 1;
+            gsp_cfg_info.layer0_info.grey.r_val = 0;
+            gsp_cfg_info.layer0_info.grey.g_val = 0;
+            gsp_cfg_info.layer0_info.grey.b_val = 0;
+
+            gsp_cfg_info.layer0_info.clip_rect.st_x = 0;
+            gsp_cfg_info.layer0_info.clip_rect.st_y = 0;
+            gsp_cfg_info.layer0_info.clip_rect.rect_w = mFBInfo->fb_width;
+            gsp_cfg_info.layer0_info.clip_rect.rect_h = mFBInfo->fb_height;
+	    gsp_cfg_info.layer0_info.des_rect = gsp_cfg_info.layer0_info.clip_rect;
+            gsp_cfg_info.layer0_info.pitch = mFBInfo->fb_width;
+
+            // Trust that these addr will not be used by GSP
+            //gsp_cfg_info.layer0_info.src_addr.addr_y =
+            //gsp_cfg_info.layer0_info.src_addr.addr_uv =
+            //gsp_cfg_info.layer0_info.src_addr.addr_v = 0;
+
+            gsp_cfg_info.layer0_info.alpha = 0xff;
+
+            gsp_cfg_info.layer0_info.rot_angle = GSP_ROT_ANGLE_0;
+            gsp_cfg_info.layer0_info.layer_en = 1;
+        }
     } else {
         ALOGI_IF(mDebugFlag,"GSP find layer1 do not exists. L%d,L1 == NULL ",__LINE__);
     }
@@ -722,27 +854,29 @@ int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t*
 #endif
             ALOGI_IF(mDebugFlag,"	gsp_iommu[%d] mapped L2 iommu addr:%08x,size:%08x",__LINE__,gsp_cfg_info.layer1_info.src_addr.addr_y,buffersize_layer2);
 
-            gsp_cfg_info.layer1_info.clip_rect.rect_w = private_h2->width;
-            gsp_cfg_info.layer1_info.clip_rect.rect_h = private_h2->height;
-            gsp_cfg_info.layer1_info.alpha = 0xff;
-
-            if (0 != layer2->transform) {
-                switch(layer2->transform) {
-                case HAL_TRANSFORM_ROT_90:
-                    gsp_cfg_info.layer1_info.rot_angle = GSP_ROT_ANGLE_270;
-                    break;
-                case HAL_TRANSFORM_ROT_270:
-                    gsp_cfg_info.layer1_info.rot_angle = GSP_ROT_ANGLE_90;
-                    break;
-                default:// 180
-                    gsp_cfg_info.layer1_info.rot_angle = GSP_ROT_ANGLE_180;
-                    break;
-                }
+            gsp_cfg_info.layer1_info.clip_rect.st_x = srcRect2->x;
+            gsp_cfg_info.layer1_info.clip_rect.st_y = srcRect2->y;
+            gsp_cfg_info.layer1_info.clip_rect.rect_w = srcRect2->w;
+            gsp_cfg_info.layer1_info.clip_rect.rect_h = srcRect2->h;
+            gsp_cfg_info.layer1_info.alpha = layer2->planeAlpha;
+            /*
+             * From black box testing, I'm not a SPRD dev,
+             * pmargb_mod controls the method of blending alpha pixels
+             * with these values corresponding to:
+             *   0 - SRC_ALPHA, ONE_MINUS_SRC_ALPHA (HWC_BLENDING_COVERAGE)
+             *   1 - ONE, ONE_MINUS_SRC_ALPHA (HWC_BLENDING_PREMULT)
+             * NOTE: We usually use the HWC_BLENDING_PREMULT.
+             */
+            if (layer2->blending == HWC_BLENDING_PREMULT) {
+                gsp_cfg_info.layer1_info.pmargb_en = 1;
+                gsp_cfg_info.layer1_info.pmargb_mod = 1;
             }
+            gsp_cfg_info.layer1_info.rot_angle = rotationType_convert(layer2->transform);
 
             gsp_cfg_info.layer1_info.pitch = private_h2->stride;
-            //gsp_cfg_info.layer1_info.pitch = private_h2->width;
-            gsp_cfg_info.layer1_info.des_pos.pos_pt_x = gsp_cfg_info.layer1_info.des_pos.pos_pt_y = 0;
+            gsp_cfg_info.layer1_info.des_pos.pos_pt_x = FBRect2->x;
+            gsp_cfg_info.layer1_info.des_pos.pos_pt_y = FBRect2->y;
+
             gsp_cfg_info.layer1_info.layer_en = 1;
 
             ALOGI_IF(mDebugFlag,"GSP process layer2 L%d,L2 [x%d,y%d,w%d,h%d,p%d] r%d [x%d,y%d]",__LINE__,
@@ -846,6 +980,17 @@ int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t*
             gsp_cfg_info.layer_des_info.img_format = GSP_DST_FMT_YUV422_2P;
 #endif
 #endif
+
+#ifdef GSP_MAX_OSD_LAYERS
+            // Force RGB output even if layer0 is a YUV layer when the
+            // conditions are met or just follow the format of layer0.
+            if (force_RGB_dest ||
+                (gsp_cfg_info.layer0_info.img_format == GSP_SRC_FMT_ARGB888) ||
+                (gsp_cfg_info.layer0_info.img_format == GSP_SRC_FMT_RGB888))
+            {
+                gsp_cfg_info.layer_des_info.img_format = GSP_DST_FMT_ARGB888;
+            }
+#endif
         }
         else if (l2 != NULL)
         {
@@ -858,22 +1003,38 @@ int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t*
             gsp_cfg_info.layer_des_info.img_format = GSP_DST_FMT_RGB565;
 #endif
         }
+        ALOGI_IF(mDebugFlag,"GSP Dst layer fmt: %d",gsp_cfg_info.layer_des_info.img_format);
 
         //in sc8830 first GSP version hw, GSP don't support odd width/height and x/y
-        gsp_cfg_info.layer0_info.clip_rect.st_x &= 0xfffe;
-        gsp_cfg_info.layer0_info.clip_rect.st_y &= 0xfffe;
-        gsp_cfg_info.layer0_info.clip_rect.rect_w &= 0xfffe;
-        gsp_cfg_info.layer0_info.clip_rect.rect_h &= 0xfffe;
-        gsp_cfg_info.layer0_info.des_rect.st_x &= 0xfffe;
-        gsp_cfg_info.layer0_info.des_rect.st_y &= 0xfffe;
-        gsp_cfg_info.layer0_info.des_rect.rect_w &= 0xfffe;
-        gsp_cfg_info.layer0_info.des_rect.rect_h &= 0xfffe;
-        gsp_cfg_info.layer1_info.clip_rect.st_x &= 0xfffe;
-        gsp_cfg_info.layer1_info.clip_rect.st_y &= 0xfffe;
-        gsp_cfg_info.layer1_info.clip_rect.rect_w &= 0xfffe;
-        gsp_cfg_info.layer1_info.clip_rect.rect_h &= 0xfffe;
-        gsp_cfg_info.layer1_info.des_pos.pos_pt_x &= 0xfffe;
-        gsp_cfg_info.layer1_info.des_pos.pos_pt_y &= 0xfffe;
+        /*
+         * Correction: The first version GSP does not support odd w/h and x/y
+         * on YUV layers but it does on RGB layers.
+         * Forcing odd values on YUV layers might hang the chip.
+         * Later revisions of the chip fixes this issue.
+         * Code imported from the newer sc8830 version.
+         */
+       if((GSP_SRC_FMT_RGB565 < gsp_cfg_info.layer0_info.img_format )
+          && (gsp_cfg_info.layer0_info.img_format < GSP_SRC_FMT_8BPP)
+          && gsp_cfg_info.layer0_info.layer_en) {
+            gsp_cfg_info.layer0_info.clip_rect.st_x &= 0xfffe;
+            gsp_cfg_info.layer0_info.clip_rect.st_y &= 0xfffe;
+            gsp_cfg_info.layer0_info.clip_rect.rect_w &= 0xfffe;
+            gsp_cfg_info.layer0_info.clip_rect.rect_h &= 0xfffe;
+            gsp_cfg_info.layer0_info.des_rect.st_x &= 0xfffe;
+            gsp_cfg_info.layer0_info.des_rect.st_y &= 0xfffe;
+            gsp_cfg_info.layer0_info.des_rect.rect_w &= 0xfffe;
+            gsp_cfg_info.layer0_info.des_rect.rect_h &= 0xfffe;
+        }
+       if((GSP_SRC_FMT_RGB565 < gsp_cfg_info.layer1_info.img_format )
+          && (gsp_cfg_info.layer1_info.img_format < GSP_SRC_FMT_8BPP)
+          && gsp_cfg_info.layer1_info.layer_en) {
+            gsp_cfg_info.layer1_info.clip_rect.st_x &= 0xfffe;
+            gsp_cfg_info.layer1_info.clip_rect.st_y &= 0xfffe;
+            gsp_cfg_info.layer1_info.clip_rect.rect_w &= 0xfffe;
+            gsp_cfg_info.layer1_info.clip_rect.rect_h &= 0xfffe;
+            gsp_cfg_info.layer1_info.des_pos.pos_pt_x &= 0xfffe;
+            gsp_cfg_info.layer1_info.des_pos.pos_pt_y &= 0xfffe;
+        }
 
 
 

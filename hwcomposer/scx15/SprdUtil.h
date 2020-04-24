@@ -187,6 +187,9 @@ private:
                          gpu_transform_info_t *transformInfo);
 #endif
 #ifdef PROCESS_VIDEO_USE_GSP
+    // Imported from the newer sc8830 version.
+    GSP_ROT_ANGLE_E rotationType_convert(int angle);
+
     int openGSPDevice();
     int acquireTmpBuffer(int width, int height, int format, private_handle_t* friendBuffer, int *outBufferPhy, int *outBufferSize);
 #endif

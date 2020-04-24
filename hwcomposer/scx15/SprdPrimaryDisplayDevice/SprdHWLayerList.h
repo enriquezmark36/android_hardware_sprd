@@ -79,9 +79,11 @@ public:
           mList(NULL),
           mDisableHWCFlag(false),
           mSkipLayerFlag(false),
+#ifdef GSP_MAX_OSD_LAYERS
+          mGspLimit(GSP_MAX_OSD_LAYERS),
+#endif
           mDebugFlag(0), mDumpFlag(0)
     {
-
     }
     ~SprdHWLayerList();
 
@@ -161,9 +163,11 @@ private:
     hwc_display_contents_1_t *mList;
     bool mDisableHWCFlag;
     bool mSkipLayerFlag;
+#ifdef GSP_MAX_OSD_LAYERS
+    int mGspLimit;
+#endif
     int mDebugFlag;
     int mDumpFlag;
-
 
     /*
      *  Filter OSD layer

@@ -46,14 +46,16 @@ static int32_t gsp_hal_layer0_params_check (GSP_LAYER0_CONFIG_INFO_T *layer0_inf
         return GSP_NO_ERR;
     }
 
-    if(layer0_info->clip_rect.st_x & 0x1
+    if((GSP_SRC_FMT_RGB565 < layer0_info->img_format)
+        && (layer0_info->img_format < GSP_SRC_FMT_8BPP)
+        && (layer0_info->clip_rect.st_x & 0x1
             ||layer0_info->clip_rect.st_y & 0x1
             ||layer0_info->clip_rect.rect_w & 0x1
             ||layer0_info->clip_rect.rect_h & 0x1
             ||layer0_info->des_rect.st_x & 0x1
             ||layer0_info->des_rect.st_y & 0x1
             ||layer0_info->des_rect.rect_w & 0x1
-            ||layer0_info->des_rect.rect_h & 0x1) {
+            ||layer0_info->des_rect.rect_h & 0x1)) {
         ALOGE("param check err: Line:%d\n", __LINE__);
         return GSP_HAL_PARAM_CHECK_ERR;
     }
@@ -230,12 +232,14 @@ static int32_t gsp_hal_layer1_params_check(GSP_LAYER1_CONFIG_INFO_T *layer1_info
         return GSP_NO_ERR;
     }
 
-    if(layer1_info->clip_rect.st_x & 0x1
+    if((GSP_SRC_FMT_RGB565 < layer1_info->img_format)
+        && (layer1_info->img_format < GSP_SRC_FMT_8BPP)
+        && (layer1_info->clip_rect.st_x & 0x1
             ||layer1_info->clip_rect.st_y & 0x1
             ||layer1_info->clip_rect.rect_w & 0x1
             ||layer1_info->clip_rect.rect_h & 0x1
             ||layer1_info->des_pos.pos_pt_x & 0x1
-            ||layer1_info->des_pos.pos_pt_y & 0x1) {
+            ||layer1_info->des_pos.pos_pt_y & 0x1)) {
         ALOGE("param check err: Line:%d\n", __LINE__);
         return GSP_HAL_PARAM_CHECK_ERR;
     }

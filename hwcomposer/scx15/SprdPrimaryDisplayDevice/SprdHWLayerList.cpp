@@ -310,6 +310,7 @@ int SprdHWLayerList:: revisitGeometry(int *DisplayFlag, SprdPrimaryDisplayDevice
         }
 #endif
 
+#ifndef GSP_MAX_OSD_LAYERS
         /*
          *  Make sure the OSD layer is the top layer and the layer below it
          *  is video layer. If so, go overlay.
@@ -321,20 +322,36 @@ int SprdHWLayerList:: revisitGeometry(int *DisplayFlag, SprdPrimaryDisplayDevice
                                    (RGBLayer && ((RGBIndex + 1) == LayerCount - 1) &&
                                     (YUVIndex == RGBIndex -1)));
         }
+#endif
 
         /*
          *  At present, the HWComposer cannot handle 2 or more than 2 RGB layer.
          *  So, when found RGB layer count > 1, just switch back to SurfaceFlinger.
-         * */
-        if ((mOSDLayerCount > 0)  && ((mFBLayerCount > 0) || (supportYUVLayerCond == false)))
-        {
+         *
+         * Note:
+         *  By relying heavily on GSP to blend RGB layers, it should be possible to
+         *  blend more than 2 RGB layers(yes, not just 1). Due to the lack of scaling
+         *  in GSP layer1 (the top layer), blending two or more video YUV layers
+         *  may be costly since the scaling has to be done separately. However, it
+         *  could be possible if the YUV layer is the bottom layer.
+         */
+        if ((mFBLayerCount) || // RGB Layers plus some layers handled by SF
+#ifdef GSP_MAX_OSD_LAYERS
+            (mOSDLayerCount > mGspLimit) || // Above the arbitrary RGB layers limit
+            (YUVLayer && YUVIndex && (mOSDLayerCount >= mGspLimit)) // A YUV layer and it's not at the bottom
+#else
+            // A YUV layer and a RGB layer but GSP won't be used to blend them
+            (supportYUVLayerCond == false)
+#endif
+	){
             resetOverlayFlag(mOSDLayerList[i]);
             mFBLayerCount++;
             RGBLayer = NULL;
             RGBIndex = 0;
-            ALOGI_IF(mDebugFlag , "no video layer, abandon osd overlay");
+            ALOGI_IF(mDebugFlag , "abandon osd overlay");
             continue;
         }
+
 
         RGBLayer = mOSDLayerList[i];
         RGBIndex = RGBLayer->getLayerIndex();
@@ -543,21 +560,15 @@ int SprdHWLayerList:: prepareOSDLayer(SprdHWLayer *l)
 #endif
 #endif
 
-    if ((layer->transform != 0) &&
-        ((layer->transform & HAL_TRANSFORM_ROT_90) != HAL_TRANSFORM_ROT_90))
+// OVC supports 180 degrees rotation and H/V mirroring
+// GSP also supports 180 degrees rotation and H/V mirroring
+    if (layer->transform & ~0x7)
     {
         ALOGI_IF(mDebugFlag, "prepareOSDLayer not support the kind of rotation L%d", __LINE__);
         return 0;
     }
     else if (layer->transform == 0)
     {
-        if (((unsigned int)privateH->width != mFBWidth)
-            || ((unsigned int)privateH->height != mFBHeight))
-        {
-            ALOGI_IF(mDebugFlag, "prepareOSDLayer Not full-screen");
-            return 0;
-        }
-
 #ifndef _DMA_COPY_OSD_LAYER
 #ifndef OVERLAY_COMPOSER_GPU
 #ifdef GSP_ADDR_TYPE_PHY
@@ -570,18 +581,15 @@ int SprdHWLayerList:: prepareOSDLayer(SprdHWLayer *l)
 #endif
 #endif
     }
-    else if (((unsigned int)privateH->width != mFBHeight)
-             || ((unsigned int)privateH->height != mFBWidth)
 #ifndef OVERLAY_COMPOSER_GPU
 #ifdef GSP_ADDR_TYPE_PHY
-             || !(l->checkContiguousPhysicalAddress(privateH))
-#endif
-#endif
-    )
+    else if (!(l->checkContiguousPhysicalAddress(privateH)))
     {
         ALOGI_IF(mDebugFlag, "prepareOSDLayer, ret 0, L%d", __LINE__);
         return 0;
     }
+#endif
+#endif
 
     srcRect->x = MAX(sourceLeft, 0);
     srcRect->y = MAX(sourceTop, 0);
@@ -591,7 +599,7 @@ int SprdHWLayerList:: prepareOSDLayer(SprdHWLayer *l)
     FBRect->x = MAX(layer->displayFrame.left, 0);
     FBRect->y = MAX(layer->displayFrame.top, 0);
     FBRect->w = MIN(layer->displayFrame.right - layer->displayFrame.left, mFBWidth);
-    FBRect->h = MIN(layer->displayFrame.bottom - layer->sourceCrop.top, mFBHeight);
+    FBRect->h = MIN(layer->displayFrame.bottom - layer->displayFrame.top, mFBHeight);
 
     if ((layer->transform & HAL_TRANSFORM_ROT_90) == HAL_TRANSFORM_ROT_90)
     {
@@ -604,16 +612,36 @@ int SprdHWLayerList:: prepareOSDLayer(SprdHWLayer *l)
         srcHeight = srcRect->h;
     }
 
+#if (!defined(OVERLAY_COMPOSER_GPU) && defined(PROCESS_VIDEO_USE_GSP)) \
+    || defined(DIRECT_DISPLAY_SINGLE_OSD_LAYER)
     /*
-     * Only support full screen now
-     * */
-    if ((FBRect->w != mFBWidth) || (FBRect->h != mFBHeight) ||
-        (FBRect->x != 0) || (FBRect->y != 0))
+     * OSD layers take up the layer1 on GSP (layers are 0-indexed)
+     * which supports everything layer0 is capable of except for
+     * scaling. When the layer get out of bounds, we have to throw it out.
+     *
+     * On DIRECT_DISPLAY_SINGLE_OSD_LAYER, where neither of the two accelerators
+     * are in used, DISPC can only handle translation. So, we want our OSD layer
+     * to actually fit in the FB 2D space without clipping.
+     *
+     * TODO: Support this use case.
+     * On an unlikely case, GSP can technically scale an OSD layer given
+     * that it is the bottom most layer (AKA. the BG layer) by using it as
+     * a video layer (GSP layer0) but would also lose the ability to blend
+     * a YUV layer with OSD layers since YUV almost always needs scaling.
+     */
+    if ((FBRect->w != srcWidth) || (FBRect->h != srcHeight))
     {
-        ALOGI_IF(mDebugFlag, "prepareOSDLayer only support full screen now,ret 0, L%d", __LINE__);
+        ALOGI_IF(mDebugFlag, "prepareOSDLayer GSP can only do scaling on Video layers, ret 0, L%d", __LINE__);
         return 0;
     }
 
+    if (((FBRect->x + srcWidth) > mFBWidth) ||
+        ((FBRect->y + srcHeight) > mFBHeight))
+    {
+        ALOGI_IF(mDebugFlag, "prepareOSDLayer Clipped layer will go out of bounds, ret 0, L%d", __LINE__);
+        return 0;
+    }
+#endif
     mRGBLayerFullScreenFlag = true;
 
 #ifdef OVERLAY_COMPOSER_GPU
@@ -679,16 +707,19 @@ int SprdHWLayerList:: prepareVideoLayer(SprdHWLayer *l)
 #endif
     {
         ALOGI_IF(mDebugFlag, "prepareOverlayLayer L%d,flags:0x%08x ,ret 0 \n", __LINE__, privateH->flags);
+
         return 0;
     }
 #endif
 
 
-    if(layer->blending != HWC_BLENDING_NONE)
+#ifndef GSP_MAX_OSD_LAYERS
+    if ((layer->blending != HWC_BLENDING_NONE))
     {
        ALOGI_IF(mDebugFlag, "prepareVideoLayer L%d,blend:0x%08x,ret 0", __LINE__, layer->blending);
         return 0;
     }
+#endif
 
     srcRect->x = MAX(sourceLeft, 0);
     srcRect->y = MAX(sourceTop, 0);
@@ -774,7 +805,6 @@ int SprdHWLayerList:: prepareVideoLayer(SprdHWLayer *l)
     mFBLayerCount--;
 
     return 0;
-
 }
 
 #ifdef OVERLAY_COMPOSER_GPU

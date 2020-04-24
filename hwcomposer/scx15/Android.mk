@@ -151,6 +151,13 @@ ifeq ($(strip $(SOC_SCX35)),true)
 LOCAL_CFLAGS += -DGSP_ADDR_TYPE_PHY
 endif
 
+# Use GSP to blend multiple OSD layers (not video layers)
+# This generally takes 3-8 msecs to blend 2 layers initialy,
+# takes less time to combine the rest about 2-7 msecs each layer.
+ifneq ($(strip $(GSP_MAX_OSD_LAYERS)),)
+LOCAL_CFLAGS += -DGSP_MAX_OSD_LAYERS=$(GSP_MAX_OSD_LAYERS)
+endif
+
 endif # DEVICE_WITH_GSP
 
 ifeq ($(DEVICE_PRIMARYPLANE_USE_RGB565),true)

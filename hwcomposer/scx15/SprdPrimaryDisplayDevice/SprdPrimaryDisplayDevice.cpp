@@ -393,6 +393,11 @@ int SprdPrimaryDisplayDevice:: commit(hwc_display_contents_1_t* list)
     private_handle_t* buffer1 = NULL;
     private_handle_t* buffer2 = NULL;
 
+#ifdef GSP_MAX_OSD_LAYERS
+    int OSDLayerCount = mLayerList->getOSDLayerCount();
+    SprdHWLayer **OSDLayerList = mLayerList->getSprdOSDLayerList();
+#endif
+
     hwc_layer_1_t *FBTargetLayer = NULL;
 
     if (list == NULL)
@@ -517,7 +522,11 @@ int SprdPrimaryDisplayDevice:: commit(hwc_display_contents_1_t* list)
     }
 #endif
 
+#ifdef GSP_MAX_OSD_LAYERS
+    if (DisplayOverlayPlane && (!OSDLayerCount || OSDLayerCount == 1))
+#else
     if (DisplayOverlayPlane)
+#endif
     {
         mOverlayPlane->dequeueBuffer();
 
@@ -528,7 +537,9 @@ int SprdPrimaryDisplayDevice:: commit(hwc_display_contents_1_t* list)
         mOverlayPlane->disable();
     }
 
-#ifdef PROCESS_VIDEO_USE_GSP
+#ifdef GSP_MAX_OSD_LAYERS
+    PrimaryPlane_Online_cond = (DisplayPrimaryPlane && (!DisplayOverlayPlane || OSDLayerCount > 1));
+#elif defined(PROCESS_VIDEO_USE_GSP)
     PrimaryPlane_Online_cond = (DisplayPrimaryPlane && (DisplayOverlayPlane == false));
 #else
     PrimaryPlane_Online_cond = DisplayPrimaryPlane;
@@ -547,6 +558,123 @@ int SprdPrimaryDisplayDevice:: commit(hwc_display_contents_1_t* list)
        mPrimaryPlane->disable();
     }
 
+#ifdef GSP_MAX_OSD_LAYERS
+    /*
+     * If there are multiple OSD Layers, we will have to do the GSP Proccess
+     * multiple times. This also supports a single YUV layer provided that
+     * it is the bottom layer.
+     */
+    if (OSDLayerCount > 1) {
+        private_handle_t* buffer = buffer2; //mPrimaryPlane->getPlaneBuffer();
+        SprdHWLayer *OverlayLayer = NULL;
+        int i = 0, j = 0;
+        int isfull = 0;
+
+        if (DisplayOverlayPlane) {
+            OverlayLayer = mOverlayPlane->getOverlayLayer();
+            j = -1;
+        }
+        /*
+         * Scan all layers if we actually have to use the pallet:
+         * Begin with the BG since it is highly probable that it will
+         * cover everything.
+         * Most of the time, this loop will iterate only once on OSD layers
+         * twice on Video + OSD layers.
+         *
+         * 'isfull' bitmap
+         * 1111
+         * |----> max height is the same as fb_height
+         *  |---> max width is the same as fb_width
+         *   |--> topleft point, y coordinate is at the origin
+         *    |-> topleft point, x coordinate is at the origin
+         */
+        for (; j < OSDLayerCount; j++) {
+            SprdHWLayer *l = NULL;
+            struct sprdRect *FBRect;
+
+            // HACK: inject the OverlayLayer when j starts with -1
+            if (__builtin_expect(j == -1, 0)) {
+                l = OverlayLayer;
+            } else {
+                l = OSDLayerList[j];
+            }
+            FBRect = l->getSprdFBRect();
+
+            if (!(isfull & 1) && !FBRect->x)
+                isfull |= 1;
+
+            if (!(isfull & 1<<1) && !FBRect->y)
+                isfull |= 1<<1;
+
+            if (!(isfull & 1<<2) && (FBRect->w + FBRect->x) == (unsigned int) mFBInfo->fb_width)
+                isfull |= 1<<2;
+
+            if (!(isfull & 1<<3) && (FBRect->h + FBRect->y) == (unsigned int) mFBInfo->fb_height)
+                isfull |= 1<<3;
+
+            if (isfull == 0xF)
+                break;
+        }
+        ALOGI_IF(mDebugFlag,
+                 "%s[%d],composerLayers output is fullscreen? %s",
+                 __func__,__LINE__, (isfull == 0xF) ? "true" : "false");
+
+        // Allow blending a YUV layer, but it has to be the background layer.
+        if (__builtin_expect(DisplayOverlayPlane, 0)) {
+            DisplayOverlayPlane = false;
+            /*
+             * This is call depends on an extra semantic that will
+             * force blending to RGB colorspace.
+             *
+             * FIXME: I can't test the YUV+RGB blending because of
+             * excessive artifacts in either Output formats
+             * so this code might be of a poorer quality.
+             */
+            if (__builtin_expect(isfull == 0xF, 1)) {
+                // extra semantic: blend layers, force RGB output
+                ALOGI_IF(mDebugFlag, "%s[%d],composerLayers blending YUV with RGB!",__func__,__LINE__);
+                ret = mUtil->composerLayers(OverlayLayer, OSDLayerList[0], NULL, buffer);
+                i = 1;
+            } else {
+                // semantic: process Video YUV layer, follow first layer format, output YUV
+                ALOGI_IF(mDebugFlag, "%s[%d],composerLayers Blend BG YUV with tranparent pallet!",__func__,__LINE__);
+                ret = mUtil->composerLayers(OverlayLayer, NULL, buffer, NULL);
+                i = 0;
+            }
+        } else {
+            if (__builtin_expect(isfull == 0xF, 1)) {
+                // semantic: blend OSD RGB layers, follow first layer format, output RGB
+                ALOGI_IF(mDebugFlag, "%s[%d],composerLayers Blending RGB layers!",__func__,__LINE__);
+                ret = mUtil->composerLayers(OSDLayerList[0], OSDLayerList[1], buffer, NULL);
+                i = 2;
+            } else {
+                // semantic: process RGB layer, output RGB (DIRECT_DISPLAY_SINGLE_OSD_LAYER use case)
+                ALOGI_IF(mDebugFlag, "%s[%d],composerLayers Blend BG RGB with pallet!",__func__,__LINE__);
+                ret = mUtil->composerLayers(NULL, OSDLayerList[0], NULL, buffer);
+                i = 1;
+            }
+        }
+
+        if (ret)
+           ALOGE("%s[%d],composerLayers initial blend failed!",__func__,__LINE__);
+
+        for (; i < OSDLayerCount; i++) {
+            int ret;
+            /*
+             * This composerLayers call depends on an additional semantics
+             * on SprdUtil that writes to buffer1 rather to buffer2.
+             * It is to indicate that GSP has to reuse the dest
+             * buffer from the previous call. Output is always RGB.
+             */
+            ret = mUtil->composerLayers(NULL, OSDLayerList[i], buffer, NULL);
+
+            if (ret)
+                ALOGE("%s[%d],composerLayers layer[%d]incremental blend failed",__func__,__LINE__,i);
+        }
+
+// NOTE: This is a dangling `else` do not insert a statement so willy nilly.
+    } else
+#endif
     if (DisplayOverlayPlane ||
         (DisplayPrimaryPlane && DirectDisplayFlag == false))
     {
@@ -584,6 +712,7 @@ int SprdPrimaryDisplayDevice:: commit(hwc_display_contents_1_t* list)
         {
             DisplayPrimaryPlane = false;
         }
+
 #endif
     }
 

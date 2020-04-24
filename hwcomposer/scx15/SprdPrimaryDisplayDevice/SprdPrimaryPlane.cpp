@@ -401,7 +401,17 @@ private_handle_t* SprdPrimaryPlane::flush()
             ALOGE("mPlaneBufferPhyAddr is NULL");
             return NULL;
         }
+        /*
+         * Allow Non-fullscreen OSD layers
+         * to be translated anywhere across the FB.
+         */
+        struct sprdRect *FBRect = mHWLayer->getSprdFBRect();
         BaseContext->buffer = mPlaneBufferPhyAddr;
+        BaseContext->rect.x = FBRect->x;
+        BaseContext->rect.y = FBRect->y;
+        BaseContext->rect.w = FBRect->w;
+        BaseContext->rect.h = FBRect->h;
+
     }
     else
     {

@@ -149,6 +149,12 @@ endif
 
 ifeq ($(strip $(SOC_SCX35)),true)
 LOCAL_CFLAGS += -DGSP_ADDR_TYPE_PHY
+
+# The First version of GSP deals badly with YUV colorspace
+# that it introduces weird artifacts beaming either
+# horizontally or vertically across the image giving
+# it a pixelated look.
+LOCAL_CFLAGS += -DPROCESS_VIDEO_DONT_USE_GSP
 endif
 
 # Use GSP to blend multiple OSD layers (not video layers)

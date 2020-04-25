@@ -263,6 +263,17 @@ int SprdHWLayerList:: revisitGeometry(int *DisplayFlag, SprdPrimaryDisplayDevice
             continue;
         }
 
+#ifdef PROCESS_VIDEO_DONT_USE_GSP
+        /*
+         * At this point, OVC might not be used to blend the YUV layer
+         * and the compile time flag suggests not to use GSP for YUV layer
+         * blending and processing
+         */
+        resetOverlayFlag(mVideoLayerList[i]);
+        mFBLayerCount++;
+        ALOGI_IF(mDebugFlag, "YUV layer ignored as per compile time flag");
+	continue;
+#else
         /*
          *  Our Display Controller cannot handle 2 or more than 2 video layers
          *  at the same time.
@@ -276,6 +287,7 @@ int SprdHWLayerList:: revisitGeometry(int *DisplayFlag, SprdPrimaryDisplayDevice
 
         YUVLayer = mVideoLayerList[i];
         YUVIndex = YUVLayer->getLayerIndex();
+#endif
     }
 
     /*

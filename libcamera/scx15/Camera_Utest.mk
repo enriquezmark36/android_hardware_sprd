@@ -64,6 +64,7 @@ LOCAL_SRC_FILES:= \
 	sensor/sensor_hi702_ccir.c \
 	sensor/sensor_pattern.c \
 	sensor/sensor_sr352.c \
+	sensor/sensor_s5k4ecgx_mipi.c \
 	vsp/sc8830/src/jpg_drv_sc8830.c \
 	jpeg/jpeg_fw_8830/src/jpegcodec_bufmgr.c \
 	jpeg/jpeg_fw_8830/src/jpegcodec_global.c \
@@ -235,7 +236,11 @@ LOCAL_MODULE := utest_camera_$(TARGET_BOARD_PLATFORM)
 LOCAL_MODULE_TAGS := optional
 
 ifeq ($(strip $(sc8830like)),1)
-LOCAL_SHARED_LIBRARIES := libexif libutils libcamera_client libskia libcutils libsqlite libhardware libmorpho_easy_hdr libcamera_metadata libmemoryheapion_sprd
+LOCAL_SHARED_LIBRARIES := libexif libutils libcamera_client libskia libcutils libsqlite libhardware libmorpho_easy_hdr libcamera_metadata libmemoryheapion
+LOCAL_SHARED_LIBRARIES += \
+	libnativewindow \
+	libgui \
+	liblog
 endif
 
 ifdef CONFIG_CAMERA_ISP

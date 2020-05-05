@@ -2536,7 +2536,7 @@ bool SprdCameraHardware::startCameraIfNecessary()
 		LOGI("OK to camera_start.");
 		WaitForCameraStart();
 
-		set_ddr_freq(BASE_FREQ_REQ);
+		set_ddr_freq(NO_FREQ_REQ);
 
 		LOGI("init camera: initializing parameters");
 	} else {
@@ -3329,7 +3329,7 @@ void SprdCameraHardware::deinitCapture()
 status_t SprdCameraHardware::set_ddr_freq(uint32_t mhzVal)
 {
 	const char*     freq_in_khz = NO_FREQ_STR;
-	uint32_t        tmpSetFreqCount = mSetDDRFreqCount;
+	int             tmpSetFreqCount = mSetDDRFreqCount;
 
 	LOGI("set_ddr_freq to %d now count %d freq %d E", mhzVal, mSetDDRFreqCount, mSetDDRFreq);
 	if (mhzVal == mSetDDRFreq && NO_FREQ_REQ != mhzVal) {
@@ -3394,9 +3394,10 @@ status_t SprdCameraHardware::set_ddr_freq(uint32_t mhzVal)
 		return BAD_VALUE;
 	}
 
-	fprintf(fp, "%s", freq_in_khz);
+	if (tmpSetFreqCount < 0)
+		fprintf(fp, "%s", freq_in_khz);
 	mSetDDRFreq = mhzVal;
-	mSetDDRFreqCount = tmpSetFreqCount;
+	mSetDDRFreqCount = tmpSetFreqCount > 0 ? tmpSetFreqCount : 0;
 	LOGI("set_ddr_freq to %skhz now count %d freq %d X", freq_in_khz, mSetDDRFreqCount, mSetDDRFreq);
 	fclose(fp);
 	return NO_ERROR;
@@ -3413,7 +3414,7 @@ status_t SprdCameraHardware::startPreviewInternal(bool isRecording)
 			LOGI("zsl-supported is %s", isZslSupport);
 			mParameters.setZsl(1);
 		} else {
-			set_ddr_freq(BASE_FREQ_REQ);
+			set_ddr_freq(NO_FREQ_REQ);
 		}
 	}
 
@@ -3459,7 +3460,7 @@ status_t SprdCameraHardware::startPreviewInternal(bool isRecording)
 		deinitCapture();
 		if (!initCapture(mData_cb != NULL)) {
 			deinitCapture();
-			set_ddr_freq(BASE_FREQ_REQ);
+			set_ddr_freq(NO_FREQ_REQ);
 			LOGE("startPreviewInternal X initCapture failed. Not taking picture.");
 			return UNKNOWN_ERROR;
 		}
@@ -3473,7 +3474,7 @@ status_t SprdCameraHardware::startPreviewInternal(bool isRecording)
 		setCameraState(SPRD_ERROR, STATE_PREVIEW);
 		deinitPreview();
 		if (iSZslMode()) {
-			set_ddr_freq(BASE_FREQ_REQ);
+			set_ddr_freq(NO_FREQ_REQ);
 		}
 		return UNKNOWN_ERROR;
 	}
@@ -3513,7 +3514,7 @@ void SprdCameraHardware::stopPreviewInternal()
 	}
 
 	if (iSZslMode()) {
-		set_ddr_freq(BASE_FREQ_REQ);
+		set_ddr_freq(NO_FREQ_REQ);
 	}
 
 	WaitForPreviewStop();
@@ -4788,7 +4789,7 @@ void SprdCameraHardware::receiveJpegPicture(JPEGENC_CBrtnType *encInfo)
 	if (!iSZslMode()) {
 		if (encInfo->need_free) {
 			deinitCapture();
-			set_ddr_freq(BASE_FREQ_REQ);
+			set_ddr_freq(NO_FREQ_REQ);
 		}
 	} else {
 		mCapBufLock.lock();
@@ -5063,7 +5064,7 @@ void SprdCameraHardware::HandleTakePicture(camera_cb_type cb,
 	case CAMERA_EXIT_CB_DONE:
 		LOGI("HandleTakePicture: CAMERA_EXIT_CB_DONE");
 		if (1 != mParameters.getInt("zsl"))
-			set_ddr_freq(BASE_FREQ_REQ);
+			set_ddr_freq(NO_FREQ_REQ);
 		if (SPRD_WAITING_RAW == getCaptureState())
 		{
 			transitionState(SPRD_WAITING_RAW,
@@ -5088,7 +5089,7 @@ void SprdCameraHardware::HandleTakePicture(camera_cb_type cb,
 		transitionState(getCaptureState(), SPRD_ERROR, STATE_CAPTURE);
 		receiveCameraExitError();
 		if (1 != mParameters.getInt("zsl"))
-			set_ddr_freq(BASE_FREQ_REQ);
+			set_ddr_freq(NO_FREQ_REQ);
 		break;
 
 	default:
@@ -5145,7 +5146,7 @@ void SprdCameraHardware::HandleEncode(camera_cb_type cb,
 					setCameraState(SPRD_IDLE,
 						STATE_CAPTURE);
 					if (1 != mParameters.getInt("zsl"))
-						set_ddr_freq(BASE_FREQ_REQ);
+						set_ddr_freq(NO_FREQ_REQ);
 				} else {
 					setCameraState(SPRD_INTERNAL_RAW_REQUESTED,
 						STATE_CAPTURE);
@@ -5157,7 +5158,7 @@ void SprdCameraHardware::HandleEncode(camera_cb_type cb,
 					SPRD_ERROR,
 					STATE_CAPTURE);
 				if (1 != mParameters.getInt("zsl"))
-					set_ddr_freq(BASE_FREQ_REQ);
+					set_ddr_freq(NO_FREQ_REQ);
 			}
 		}
 		break;
@@ -5167,7 +5168,7 @@ void SprdCameraHardware::HandleEncode(camera_cb_type cb,
 		transitionState(getCaptureState(), SPRD_ERROR, STATE_CAPTURE);
 		receiveCameraExitError();
 		if (1 != mParameters.getInt("zsl"))
-			set_ddr_freq(BASE_FREQ_REQ);
+			set_ddr_freq(NO_FREQ_REQ);
 		break;
 
 	default:

@@ -449,6 +449,45 @@ GSP_ROT_ANGLE_E SprdUtil::rotationType_convert(int angle)
     return GSP_ROT_ANGLE_0;
 }
 
+/*
+ * func: formatType_convert
+ * desc: Translate Andriod HAL Image format type to GSP format type
+ * return: gsp type
+ */
+GSP_LAYER_SRC_DATA_FMT_E SprdUtil::formatType_convert(int format)
+{
+    switch(format) {
+        case HAL_PIXEL_FORMAT_YCbCr_420_SP://0x19
+            return GSP_SRC_FMT_YUV420_2P;
+
+        case HAL_PIXEL_FORMAT_YCrCb_420_SP:
+            return GSP_SRC_FMT_YUV420_2P;
+
+        case HAL_PIXEL_FORMAT_YV12:
+            return GSP_SRC_FMT_YUV420_3P;
+
+        case HAL_PIXEL_FORMAT_RGBA_8888:
+        case HAL_PIXEL_FORMAT_BGRA_8888:
+            return GSP_SRC_FMT_ARGB888;//?
+
+        case HAL_PIXEL_FORMAT_RGBX_8888:
+            return GSP_SRC_FMT_RGB888;//?
+
+        case HAL_PIXEL_FORMAT_RGB_565:
+            return GSP_SRC_FMT_RGB565;
+        default:
+            break;
+    }
+
+    ALOGE("SprdUtil[%04d]: unknown format:%d!",__LINE__,format);
+    return GSP_SRC_FMT_MAX_NUM;
+}
+
+bool SprdUtil::isLayerFormatSupported(int fmt)
+{
+    return (formatType_convert(fmt) != GSP_SRC_FMT_MAX_NUM);
+}
+
 int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t* buffer1, private_handle_t* buffer2)
 {
     int32_t ret = 0;
@@ -589,32 +628,27 @@ int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t*
             video_check_result = 1;
 
             //config Video ,use GSP L0
+            gsp_cfg_info.layer0_info.img_format = formatType_convert(private_h1->format);
+            if (gsp_cfg_info.layer0_info.img_format == GSP_SRC_FMT_MAX_NUM) {
+                ALOGE("SprdUtil::composerLayers[%d], layer1 format %d not supported",__LINE__,private_h1->format);
+                return -1;
+            }
+
             switch(private_h1->format) {
+            case HAL_PIXEL_FORMAT_RGB_565:
+            case HAL_PIXEL_FORMAT_BGRA_8888:
+                gsp_cfg_info.layer0_info.endian_mode.rgb_swap_mode = GSP_RGB_SWP_BGR;
+                break;
             case HAL_PIXEL_FORMAT_YCbCr_420_SP:
-                gsp_cfg_info.layer0_info.img_format = GSP_SRC_FMT_YUV420_2P;
 #ifdef GSP_ENDIAN_IMPROVEMENT
                 gsp_cfg_info.layer0_info.endian_mode.uv_word_endn = GSP_WORD_ENDN_2;
 #else
                 gsp_cfg_info.layer0_info.endian_mode.uv_word_endn = GSP_WORD_ENDN_1;
 #endif
-                break;
-            case HAL_PIXEL_FORMAT_YCrCb_420_SP:
-                gsp_cfg_info.layer0_info.img_format = GSP_SRC_FMT_YUV420_2P;//?
-                gsp_cfg_info.layer0_info.endian_mode.uv_word_endn = GSP_WORD_ENDN_0;//?
-                break;
-            case HAL_PIXEL_FORMAT_YV12:
-                gsp_cfg_info.layer0_info.img_format = GSP_SRC_FMT_YUV420_3P;//?
-                break;
-            case HAL_PIXEL_FORMAT_RGBA_8888:
-                gsp_cfg_info.layer0_info.img_format = GSP_SRC_FMT_ARGB888;
-                break;
-            case HAL_PIXEL_FORMAT_RGBX_8888:
-                gsp_cfg_info.layer0_info.img_format = GSP_SRC_FMT_RGB888;
-                break;
             default:
-                ALOGE("SprdUtil::composerLayers[%d],private_h1->format:%d not supported",__LINE__,private_h1->format);
-                return -1;
+                break;
             }
+
 #ifdef GSP_ADDR_TYPE_PHY
             MemoryHeapIon::Get_phy_addr_from_ion(private_h1->share_fd, &(private_h1->phyaddr), &size);
             gsp_cfg_info.layer0_info.src_addr.addr_y = private_h1->phyaddr;
@@ -796,33 +830,54 @@ int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t*
         {
             osd_check_result = 1;
             //config OSD,use GSP L1
-            if (layer2_Format == HAL_PIXEL_FORMAT_RGBA_8888 ||
-                layer2_Format == HAL_PIXEL_FORMAT_RGBX_8888)
-            {
-                gsp_cfg_info.layer1_info.img_format = GSP_SRC_FMT_ARGB888;
-            }
-            else if (layer2_Format == HAL_PIXEL_FORMAT_RGB_565)
-            {
+
             /*
+             * NOTE: It is possible to support YUV under layer1 but
+             * the use is usually limited as those YUV layers are usually
+             * video layers that need scaling. layer1 doesn't support scaling
+             */
+            gsp_cfg_info.layer1_info.img_format = formatType_convert(layer2_Format);
+            if (gsp_cfg_info.layer1_info.img_format == GSP_SRC_FMT_MAX_NUM) {
+                ALOGE("SprdUtil::composerLayers[%d], layer2 format %d not supported",__LINE__, layer2_Format);
+                return -1;
+            }
+
+            switch(layer2_Format) {
+            case HAL_PIXEL_FORMAT_RGB_565:
+                /*
+                    int EndianFlag0 = 0;//rgb swap
+                    int EndianFlag1 = 0;// y endian
+                    queryEndianFlag("endian0.hwc.flag",&EndianFlag0);
+                    queryEndianFlag("endian1.hwc.flag",&EndianFlag1);
+                    gsp_cfg_info.layer1_info.img_format = GSP_SRC_FMT_RGB565;
+                    gsp_cfg_info.layer1_info.endian_mode.rgb_swap_mode = (GSP_RGB_SWAP_MOD_E)(EndianFlag0 & 0x7);
+                    gsp_cfg_info.layer1_info.endian_mode.rgb_swap_mode = GSP_RGB_SWP_BGR;
+                    gsp_cfg_info.layer1_info.endian_mode.y_word_endn = (GSP_WORD_ENDN_E)(EndianFlag1 & 0x3);
+                    gsp_cfg_info.layer1_info.endian_mode.y_lng_wrd_endn = (GSP_LNG_WRD_ENDN_E)(EndianFlag1 & 0x4);
+                    gsp_cfg_info.layer1_info.img_format = GSP_SRC_FMT_RGB565;
+                */
+                    gsp_cfg_info.layer1_info.endian_mode.rgb_swap_mode = GSP_RGB_SWP_BGR;
+                /*
                 int EndianFlag0 = 0;//rgb swap
                 int EndianFlag1 = 0;// y endian
-                queryEndianFlag("endian0.hwc.flag",&EndianFlag0);
-                queryEndianFlag("endian1.hwc.flag",&EndianFlag1);
-                gsp_cfg_info.layer1_info.img_format = GSP_SRC_FMT_RGB565;
-                gsp_cfg_info.layer1_info.endian_mode.rgb_swap_mode = (GSP_RGB_SWAP_MOD_E)(EndianFlag0 & 0x7);
-                gsp_cfg_info.layer1_info.endian_mode.rgb_swap_mode = GSP_RGB_SWP_BGR;
-                gsp_cfg_info.layer1_info.endian_mode.y_word_endn = (GSP_WORD_ENDN_E)(EndianFlag1 & 0x3);
-                gsp_cfg_info.layer1_info.endian_mode.y_lng_wrd_endn = (GSP_LNG_WRD_ENDN_E)(EndianFlag1 & 0x4);
-            */
-                gsp_cfg_info.layer1_info.img_format = GSP_SRC_FMT_RGB565;
-                gsp_cfg_info.layer1_info.endian_mode.rgb_swap_mode = GSP_RGB_SWP_BGR;
-            /*
-            int EndianFlag0 = 0;//rgb swap
-            int EndianFlag1 = 0;// y endian
 
-            queryEndianFlag("layer.hwc.pitch",&EndianFlag0);
-            */
+                queryEndianFlag("layer.hwc.pitch",&EndianFlag0);
+                */
+
+                break;
+            case HAL_PIXEL_FORMAT_BGRA_8888:
+                gsp_cfg_info.layer1_info.endian_mode.rgb_swap_mode = GSP_RGB_SWP_BGR;
+                break;
+            case HAL_PIXEL_FORMAT_YCbCr_420_SP:
+#ifdef GSP_ENDIAN_IMPROVEMENT
+                gsp_cfg_info.layer1_info.endian_mode.uv_word_endn = GSP_WORD_ENDN_2;
+#else
+                gsp_cfg_info.layer1_info.endian_mode.uv_word_endn = GSP_WORD_ENDN_1;
+#endif
+            default:
+                break;
             }
+
 #ifdef GSP_ADDR_TYPE_PHY
             MemoryHeapIon::Get_phy_addr_from_ion(private_h2->share_fd, &(private_h2->phyaddr), &size);
             gsp_cfg_info.layer1_info.src_addr.addr_v =
@@ -982,11 +1037,11 @@ int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t*
 #endif
 
 #ifdef GSP_MAX_OSD_LAYERS
-            // Force RGB output even if layer0 is a YUV layer when the
-            // conditions are met or just follow the format of layer0.
+            // Force RGBA8888 output even if layer0 is a YUV layer if the
+            // conditions are met.
             if (force_RGB_dest ||
-                (gsp_cfg_info.layer0_info.img_format == GSP_SRC_FMT_ARGB888) ||
-                (gsp_cfg_info.layer0_info.img_format == GSP_SRC_FMT_RGB888))
+                (gsp_cfg_info.layer0_info.img_format >= GSP_SRC_FMT_ARGB888 &&
+                gsp_cfg_info.layer0_info.img_format <= GSP_SRC_FMT_RGB565))
             {
                 gsp_cfg_info.layer_des_info.img_format = GSP_DST_FMT_ARGB888;
             }

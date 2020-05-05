@@ -663,6 +663,11 @@ int SprdHWLayerList:: prepareOSDLayer(SprdHWLayer *l)
         ALOGI_IF(mDebugFlag, "prepareOverlayComposerLayer find irregular layer, give up OverlayComposerGPU,ret 0, L%d", __LINE__);
         return 0;
     }
+#else
+    if (!SprdUtil::isLayerFormatSupported(privateH->format)) {
+        ALOGI_IF(mDebugFlag, "prepareOSDLayer: 0x%08x format not supported by GSP ret 0, L%d", privateH->format,__LINE__);
+        return 0;
+    }
 #endif
 
     l->setLayerType(LAYER_OSD);

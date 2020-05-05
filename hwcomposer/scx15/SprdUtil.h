@@ -164,6 +164,8 @@ public:
 
 #ifdef PROCESS_VIDEO_USE_GSP
     int composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t* buffer1, private_handle_t* buffer2);
+    // Check if the format is supported by GSP
+    static bool isLayerFormatSupported(int fmt);
 #endif
 
 private:
@@ -189,6 +191,7 @@ private:
 #ifdef PROCESS_VIDEO_USE_GSP
     // Imported from the newer sc8830 version.
     GSP_ROT_ANGLE_E rotationType_convert(int angle);
+    static GSP_LAYER_SRC_DATA_FMT_E formatType_convert(int format);
 
     int openGSPDevice();
     int acquireTmpBuffer(int width, int height, int format, private_handle_t* friendBuffer, int *outBufferPhy, int *outBufferSize);

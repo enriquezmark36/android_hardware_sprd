@@ -1585,29 +1585,49 @@ LOCAL uint32_t _Sensor_Register(SENSOR_ID_E sensor_id)
 
 #define SENSOR_PARAM_NUM  8
 #define SENSOR_PARA "/data/misc/media/sensor.file"
+#define SENSOR_PARA_ALT "/data/local/media/sensor.file"
+static const char *param_file;
 void _Sensor_load_sensor_type(void)
 {
 	FILE 		*fp;
 	uint8_t 	sensor_param[SENSOR_PARAM_NUM];
 	uint32_t 	len = 0;
 
+	const char* const SENSOR_PARA_LIST[] = {
+		SENSOR_PARA,
+		SENSOR_PARA_ALT,
+		NULL,
+	};
+	uint8_t 	idx = 0;
+
 	memset(&sensor_param[0],0,SENSOR_PARAM_NUM);
 
-	fp = fopen(SENSOR_PARA,"rb+");
-	if(NULL == fp){
-		fp = fopen(SENSOR_PARA,"wb+");
+	for (; NULL != SENSOR_PARA_LIST[idx]; idx++) {
+		param_file = SENSOR_PARA_LIST[idx];
+		if (idx)
+			CMR_LOGE("_Sensor_load_sensor_type: Retrying on %s\n", param_file);
+
+		fp = fopen(param_file,"rb+");
 		if(NULL == fp){
-			CMR_LOGE("_Sensor_load_sensor_type: file %s open error:%s\n",SENSOR_PARA,strerror(errno));
+			fp = fopen(param_file,"wb+");
+			if(NULL == fp) {
+				CMR_LOGE("_Sensor_load_sensor_type: file %s open error:%s\n",param_file,strerror(errno));
+			}
+			memset(&sensor_param[0],0xFF,SENSOR_PARAM_NUM);
+		}else{
+			len = fread(sensor_param, 1, SENSOR_PARAM_NUM, fp);
+			CMR_LOGI("_Sensor_load_sensor_type:read sensor param len is %d \n",len);
+			CMR_LOGI("_Sensor_load_sensor_type:read sensor param  is %x,%x,%x,%x,%x,%x,%x,%x \n",
+				sensor_param[0], sensor_param[1], sensor_param[2], sensor_param[3],
+				sensor_param[4], sensor_param[5], sensor_param[6], sensor_param[7]);
+			break;
 		}
-		memset(&sensor_param[0],0xFF,SENSOR_PARAM_NUM);
-	}else{
-		len = fread(sensor_param, 1, SENSOR_PARAM_NUM, fp);
-		CMR_LOGI("_Sensor_load_sensor_type:read sensor param len is %d \n",len);
-		CMR_LOGI("_Sensor_load_sensor_type:read sensor param  is %x,%x,%x,%x,%x,%x,%x,%x \n",
-			sensor_param[0], sensor_param[1], sensor_param[2], sensor_param[3],
-			sensor_param[4], sensor_param[5], sensor_param[6], sensor_param[7]);
 	}
 
+	if ((NULL == fp) && (NULL == SENSOR_PARA_LIST[idx])) {
+		CMR_LOGE("_Sensor_load_sensor_type: load failed\n");
+		param_file = NULL;
+	}
 	if(NULL != fp)
 		fclose(fp);
 
@@ -1619,14 +1639,20 @@ void _Sensor_save_sensor_type(void)
 	FILE                  *fp;
 	uint8_t               is_saved;
 	uint8_t               sensor_param[SENSOR_PARAM_NUM];
+	const char            *file = param_file;
 
 	memset(&sensor_param[0], 0, SENSOR_PARAM_NUM);
 	Sensor_GetMark(sensor_param, &is_saved);
 
+
 	if(is_saved){
-		fp = fopen(SENSOR_PARA,"wb+");
+		if (!file) {
+			CMR_LOGW("_Sensor_save_sensor_type: the earlier load failed, saving to %s \n", SENSOR_PARA);
+			file = SENSOR_PARA;
+		}
+		fp = fopen(file,"wb+");
 		if(NULL == fp){
-			CMR_LOGI("_Sensor_save_sensor_type: file %s open error:%s \n",SENSOR_PARA,strerror(errno));
+			CMR_LOGI("_Sensor_save_sensor_type: file %s open error:%s \n",file,strerror(errno));
 		}else{
 			fwrite(sensor_param, 1, SENSOR_PARAM_NUM, fp);
 			fclose(fp);

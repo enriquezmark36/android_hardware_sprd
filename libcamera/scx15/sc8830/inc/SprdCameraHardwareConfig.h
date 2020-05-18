@@ -569,8 +569,13 @@ struct config_element sprd_back_camera_hardware_config[] = {
 	{"picture-size-values", "3264x2448,2592x1944,2048x1536,1600x1200,1280x960,640x480"},
 	{"video-picture-size-values", "1600x1200,1600x1200,1600x1200,1600x1200,1600x1200"},
 #elif defined(CONFIG_CAMERA_SUPPORT_5M)
+#ifdef CONFIG_CAMERA_KANAS
+	{"picture-size-values", "2560x1920,2560x1536,2048x1536,1600x1200,1600x960,1280x960,640x480,320x240,176x144"},
+	{"video-picture-size-values", "1280x960,1280x960,1280x960,1280x960,1280x960"},
+#else
 	{"picture-size-values", "2592x1944,2048x1536,1600x1200,1280x960,640x480"},
 	{"video-picture-size-values", "1600x1200,1600x1200,1600x1200,1600x1200,1600x1200"},
+#endif
 #elif defined(CONFIG_CAMERA_SUPPORT_3M)
 	{"picture-size-values", "2048x1536,1600x1200,1280x960,640x480"},
 	{"video-picture-size-values", "1600x1200,1600x1200,1600x1200,1600x1200,1600x1200"},
@@ -581,7 +586,11 @@ struct config_element sprd_back_camera_hardware_config[] = {
 	{"picture-size-values", "3264x2448,2592x1944,2048x1536,1600x1200,1280x960,640x480"},
 	{"video-picture-size-values", "1280x960,1280x960,1280x960,1280x960,1280x960"},
 #endif
+#ifdef CONFIG_CAMERA_KANAS
+	{"picture-size", "2560x1920"},
+#else
 	{"picture-size", "1600x1200"},
+#endif
 #if defined(CONFIG_CAMERA_SMALL_PREVSIZE)
 #if defined(CONFIG_CAMERA_X3542)
 	{"preview-size-values", "720x480,640x480,352x288,176x144"},
@@ -591,7 +600,7 @@ struct config_element sprd_back_camera_hardware_config[] = {
 	{"preview-size", "640x480"},
 #else
 #ifdef CONFIG_CAMERA_KANAS
-	{"preview-size-values", "1280x720,960x540,720x540,800x480,720x480,640x480,352x288,320x240,176x144"},
+	{"preview-size-values", "1280x960,1280x720,960x540,720x540,800x480,720x480,640x480,352x288,320x240,176x144"},
 	{"preview-size", "800x480"},
 #else
 	{"preview-size-values", "1920x1088,1280x960,1280x720,960x540,720x540,720x480,640x480,352x288,320x240,176x144"},

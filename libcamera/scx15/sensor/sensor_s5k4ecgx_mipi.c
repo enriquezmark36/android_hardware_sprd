@@ -58,6 +58,11 @@ LOCAL uint32_t s_flash_mode_en = 0;
 LOCAL uint32_t s_preview_mode = 0;
 LOCAL uint32_t s_white_balance = 0;
 
+// Local copy of state used by the HD camcorder settings
+LOCAL uint32_t s_brightness = 3; // Default value
+LOCAL uint32_t s_metering_mode = 0;
+LOCAL  uint8_t s_hd_applied = 0;
+
 // Local AF states
 LOCAL uint16_t s_focus_mode = 0;
 LOCAL  uint8_t s_using_low_light_af = 0;
@@ -96,6 +101,7 @@ LOCAL uint32_t s5k4ec_get_ISO_rate();
 LOCAL uint32_t s5k4ec_get_shutter_speed();
 LOCAL uint32_t s5k4ecgx_set_focus_mode(uint32_t mode);
 LOCAL uint32_t __s5k4ecgx_set_focus_mode(uint32_t mode); // Force-set
+LOCAL uint32_t _s5k4ecgx_reset_focus_touch_position();
 LOCAL uint16_t s5k4ecgx_get_frame_time();
 LOCAL uint32_t s5k4ec_wait_until_ae_stable();
 
@@ -112,17 +118,17 @@ LOCAL SENSOR_REG_TAB_INFO_T s_s5k4ec_resolution_Tab_YUV[] = {
 	//COMMON INIT
 	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_common_init), 0, 0, 24, SENSOR_IMAGE_FORMAT_YUV422},
 	//YUV422 PREVIEW 1
+	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_320X240), 320, 240, 24, SENSOR_IMAGE_FORMAT_YUV422},
 	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_640X480), 640, 480, 24, SENSOR_IMAGE_FORMAT_YUV422},
+	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_720X540), 720, 540, 24, SENSOR_IMAGE_FORMAT_YUV422},
 	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_1280X720), 1280, 720, 24, SENSOR_IMAGE_FORMAT_YUV422},
-	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_2592X1944), 2560, 1920, 24, SENSOR_IMAGE_FORMAT_YUV422},
-	{PNULL, 0, 0, 0, 0, 0},
 
 	//YUV422 PREVIEW 2
-	{PNULL, 0, 0, 0, 0, 0},
-	{PNULL, 0, 0, 0, 0, 0},
-	{PNULL, 0, 0, 0, 0, 0},
-	{PNULL, 0, 0, 0, 0, 0},
-	{PNULL, 0, 0, 0, 0, 0},
+	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_1280X960), 1280, 960, 24, SENSOR_IMAGE_FORMAT_YUV422},
+	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_1600X1200), 1600, 1200, 24, SENSOR_IMAGE_FORMAT_YUV422},
+	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_2048X1536), 2048, 1536, 24, SENSOR_IMAGE_FORMAT_YUV422},
+	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_2560X1920), 2560, 1920, 24, SENSOR_IMAGE_FORMAT_YUV422},
+
 	{PNULL, 0, 0, 0, 0, 0}
 };
 
@@ -178,15 +184,19 @@ LOCAL SENSOR_TRIM_T s_s5k4ec_Resolution_Trim_Tab[]=
 {
 	// COMMON INIT
 	{0, 0, 640, 480, 0, 0, 0, {0, 0, 0, 0}},
+
 	// YUV422 PREVIEW 1
+	{0, 0, 320, 240, 680, 648, 40, {0, 0, 320, 240}},
 	{0, 0, 640, 480, 680, 648, 40, {0, 0, 640, 480}},
+	{0, 0, 720, 540, 680, 648, 40, {0, 0, 720, 540}},
 	{0, 0, 1280, 720, 664, 648, 0, {0, 0, 1280, 720}},
+
+	//YUV422 PREVIEW 2
+	{0, 0, 1280, 960, 664, 648, 0, {0, 0, 1280, 960}},
+	{0, 0, 1600, 1200, 664, 648, 0, {0, 0, 1600, 1200}},
+	{0, 0, 2048, 1536, 660, 648, 0, {0, 0, 2048, 1536}},
 	{0, 0, 2560, 1920, 660, 648, 0, {0, 0, 2560, 1920}},
-	{0, 0, 0, 0, 0, 0, 0, {0, 0, 0, 0}},
-	{0, 0, 0, 0, 0, 0, 0, {0, 0, 0, 0}},
-	{0, 0, 0, 0, 0, 0, 0, {0, 0, 0, 0}},
-	{0, 0, 0, 0, 0, 0, 0, {0, 0, 0, 0}},
-	{0, 0, 0, 0, 0, 0, 0, {0, 0, 0, 0}},
+
 	{0, 0, 0, 0, 0, 0, 0, {0, 0, 0, 0}},
 	{0, 0, 0, 0, 0, 0, 0, {0, 0, 0, 0}}
 };
@@ -541,6 +551,25 @@ LOCAL uint32_t _s5k4ec_Identify(__attribute__((unused)) uint32_t param)
 		//_s5k4ec_get_antibanding();
 		_s5k4ec_InitExifInfo();
 		//_s5k4ec_set_vendorid();
+
+		/*
+		 * Initialize our local states, again.
+		 * Just to be sure. Setting it again will not hurt
+		 * But not setting it at all will.
+		 */
+		s_fps_cur_max = -1; // current max FPS (abs max is 30)
+		s_current_env = 0; // 0 - Norm, 1 - Low Light, 2 - Night
+		s_current_ev = 0;
+		s_cur_scene = 0;
+		s_flash_mode_en = 0;
+		s_preview_mode = 0;
+		s_white_balance = 0;
+		s_brightness = 3; // Default value
+		s_hd_applied = 0;
+		s_metering_mode = 0;
+		s_focus_mode = 0;
+		s_using_low_light_af = 0;
+		s_af_wnd_has_changed = 0;
 	}
 
 	return ret_value;
@@ -555,6 +584,7 @@ LOCAL uint32_t _s5k4ec_set_brightness(uint32_t level)
 	SENSOR_PRINT_HIGH("Apply Brightness level %u", level);
 
 	s5k4ec_I2C_write(s5k4ec_brightness_tab[level]);
+	s_brightness = level;
 	Sensor_SetSensorExifInfo(SENSOR_EXIF_CTRL_BRIGHTNESSVALUE, (uint32_t) level);
 
 	return 0;
@@ -697,8 +727,28 @@ LOCAL uint32_t _s5k4ec_set_video_mode(uint32_t mode)
 	SENSOR_PRINT_HIGH("mode = 0x%X", mode);
 
 	SENSOR_PRINT_HIGH("cxt->sn_cxt.preview_mode=%u s_preview_mode=%u", cxt->sn_cxt.preview_mode, s_preview_mode);
-	if (s_preview_mode != cxt->sn_cxt.preview_mode)
+	if (s_preview_mode != cxt->sn_cxt.preview_mode) {
+		if (1280 <= s_s5k4ec_resolution_Tab_YUV[cxt->sn_cxt.preview_mode].width) {
+			if (!s_hd_applied) {
+				SENSOR_PRINT_HIGH("Applying HD camcorder settings");
+				s5k4ec_I2C_write(s5k4ec_enable_camcorder);
+			}
+			s_hd_applied = 1;
+		} else if (s_hd_applied) {
+			SENSOR_PRINT_HIGH("Reverting HD camcorder settings");
+			s5k4ec_I2C_write(s5k4ec_disable_camcorder);
+
+			// revert AE
+			_s5k4ec_set_brightness(s_brightness);
+
+			// Revert Metering setting
+			if (s_metering_mode != 0) // matrix
+				s5k4ec_set_Metering(s_metering_mode);
+			s_hd_applied = 0;
+		}
+
 		s5k4ec_I2C_write(s5k4ec_preview_return);
+	}
 
 	s_preview_mode = cxt->sn_cxt.preview_mode;
 	s5k4ec_set_FPS(cxt->cmr_set.frame_rate);
@@ -1129,13 +1179,13 @@ LOCAL uint32_t _s5k4ecgx_set_focus_touch_position(SENSOR_EXT_FUN_PARAM_T_PTR par
 	uint16_t reg_value;
 	uint16_t width, height;
 	uint16_t outer_window_width, outer_window_height,
-			inner_window_width, inner_window_height;
-
+		inner_window_width, inner_window_height;
+	uint16_t inner_width, inner_height;
 	uint16_t inner_x, inner_y, outer_x, outer_y;
 	uint16_t touch_x, touch_y;
 
-	width = s_s5k4ec_resolution_Tab_YUV[SENSOR_MODE_PREVIEW_ONE].width;
-	height = s_s5k4ec_resolution_Tab_YUV[SENSOR_MODE_PREVIEW_ONE].height;
+	width = s_s5k4ec_resolution_Tab_YUV[s_preview_mode].width;
+	height = s_s5k4ec_resolution_Tab_YUV[s_preview_mode].height;
 	touch_x = param_ptr->zone[0].x;
 	touch_y = param_ptr->zone[0].y;
 	SENSOR_PRINT_HIGH("Start x=%d, y=%d, w=%d, h=%d, width=%d height=%d",
@@ -1143,29 +1193,64 @@ LOCAL uint32_t _s5k4ecgx_set_focus_touch_position(SENSOR_EXT_FUN_PARAM_T_PTR par
 		width, height
 	);
 
+	if (touch_x < 0 || touch_y < 0) {
+		SENSOR_PRINT_HIGH("Invalid coordinates, reseting AF window setting");
+		_s5k4ecgx_reset_focus_touch_position();
+	}
+
 	Sensor_WriteReg(0xFCFC, 0xD000);
 	Sensor_WriteReg(0x002C, 0x7000);
 	Sensor_WriteReg(0x002E, 0x0298);
 	reg_value = Sensor_ReadReg(0x0F12);
-	SENSOR_PRINT_HIGH("outer_width : %x(%d)", reg_value, reg_value);
+	SENSOR_PRINT_HIGH("outer_width : 0x%X(%d)", reg_value, reg_value);
 	outer_window_width = (reg_value * width / 1024);
 
 	Sensor_WriteReg(0x002E, 0x029A);
 	reg_value = Sensor_ReadReg(0x0F12);
-	SENSOR_PRINT_HIGH("outer_height : %x(%d)", reg_value, reg_value);
+	SENSOR_PRINT_HIGH("outer_height : 0x%X(%d)", reg_value, reg_value);
 	outer_window_height = (reg_value * height / 1024);
 
+	// Allow setting a smaller window size
+	if (param_ptr->zone[0].w && param_ptr->zone[0].h) {
+		SENSOR_PRINT_HIGH("Second search window size will be changed");
+		inner_width = (param_ptr->zone[0].w * 1024) / width;
+		inner_height = (param_ptr->zone[0].h * 1024) / height;
+	} else {
+		Sensor_WriteReg(0x002E, 0x02A0);
+		inner_width = Sensor_ReadReg(0x0F12);
 
-	Sensor_WriteReg(0x002E, 0x02A0);
-	reg_value = Sensor_ReadReg(0x0F12);
-	SENSOR_PRINT_HIGH("inner_width : %x(%d)", reg_value, reg_value);
-	inner_window_width = (reg_value * width / 1024);
+		Sensor_WriteReg(0x002E, 0x02A2);
+		inner_height = Sensor_ReadReg(0x0F12);
+	}
+	inner_window_width = ((inner_width * width) / 1024);
+	inner_window_height = ((inner_height * height) / 1024);
+	SENSOR_PRINT_HIGH("inner_width : 0x%X(%d)", inner_width, inner_width);
+	SENSOR_PRINT_HIGH("inner_height : 0x%X(%d)", inner_height, inner_height);
 
+	/*
+	 * After this code block lies a copy-pasted code to determine the
+	 * coordinates of top-left corners of the two AF search windows.
+	 * Re-read the last paragraph if you didn't get something was up.
+	 *
+	 * The coordinates are already given but why calculate it?
+	 *
+	 * Because, the code assumes that the coordinates given is
+	 * not of a top-left corner point but of a geometric center
+	 * of some rectangle. We might want to either fix the code
+	 * or make the assumption true. The latter is much easier to implement.
+	 */
+	// When we get nil or 1 dimensional window, treat the coordinates
+	// as a center point rather than a top-left corner point.
+	if (param_ptr->zone[0].w && param_ptr->zone[0].h) {
+		touch_x += param_ptr->zone[0].w/2;
+		touch_y += param_ptr->zone[0].h/2;
 
-	Sensor_WriteReg(0x002E, 0x02A2);
-	reg_value = Sensor_ReadReg(0x0F12);
-	SENSOR_PRINT_HIGH("inner_height : %x(%d)", reg_value, reg_value);
-	inner_window_height = (reg_value * height / 1024);
+		// Don't allow unbounded values
+		if (touch_x > width)
+			touch_x = width - 1;
+		if (touch_y > height)
+			touch_y = height - 1;
+	}
 
 	if (touch_x <= inner_window_width/2) {
 		// inner window, outer window should be positive.
@@ -1176,11 +1261,11 @@ LOCAL uint32_t _s5k4ecgx_set_focus_touch_position(SENSOR_EXT_FUN_PARAM_T_PTR par
 		inner_x = touch_x - inner_window_width/2;
 		outer_x = 0;
 	} else if (touch_x >= ((width - 1) - inner_window_width/2)) {
-		// inner window, outer window should be less than LCD Display Size
+		// inner window, outer window should be less than the preview size
 		inner_x = (width - 1) - inner_window_width;
 		outer_x = (width - 1) - outer_window_width;
 	} else if (touch_x >= ((width -1) - outer_window_width/2)) {
-		// outer window should be less than LCD Display Size
+		// outer window should be less than the preview size
 		inner_x = touch_x - inner_window_width/2;
 		outer_x = (width -1) - outer_window_width;
 	} else {
@@ -1198,15 +1283,15 @@ LOCAL uint32_t _s5k4ecgx_set_focus_touch_position(SENSOR_EXT_FUN_PARAM_T_PTR par
 		inner_y = touch_y - inner_window_height/2;
 		outer_y = 0;
 	} else if (touch_y >= ((height - 1) - inner_window_height/2)) {
-		// inner window, outer window should be less than LCD Display Size
+		// inner window, outer window should be less than the preview size
 		inner_y = (height - 1) - inner_window_height;
 		outer_y = (height - 1) - outer_window_height;
 	} else if (touch_y >= ((height - 1) - outer_window_height/2)) {
-		// outer window should be less than LCD Display Size
+		// outer window should be less than the preview size
 		inner_y = touch_y - inner_window_height/2;
 		outer_y = (height - 1) - outer_window_height;
 	} else {
-		// touch_x is not in a corner, so set using touch point.
+		// touch_y is not in a corner, so set using touch point.
 		inner_y = touch_y - inner_window_height/2;
 		outer_y = touch_y - outer_window_height/2;
 	}
@@ -1216,7 +1301,6 @@ LOCAL uint32_t _s5k4ecgx_set_focus_touch_position(SENSOR_EXT_FUN_PARAM_T_PTR par
 	if (!inner_x) inner_x= 1;
 	if (!inner_y) inner_y= 1;
 
-
 	SENSOR_PRINT_HIGH("touch position(%d, %d), preview size(%d, %d)",
 			touch_x, touch_y, width, height);
 	SENSOR_PRINT_HIGH("point first(%d, %d), second(%d, %d)",
@@ -1224,16 +1308,23 @@ LOCAL uint32_t _s5k4ecgx_set_focus_touch_position(SENSOR_EXT_FUN_PARAM_T_PTR par
 
 	Sensor_WriteReg(0xFCFC, 0xD000);
 	Sensor_WriteReg(0x0028, 0x7000);
+
 	Sensor_WriteReg(0x002A, 0x0294);       //AF window setting
 	Sensor_WriteReg(0x0F12, outer_x * 1024 / width);       //REG_TC_AF_FstWinStartX
-	Sensor_WriteReg(0x0F12,  outer_y * 1024 / height);       //REG_TC_AF_FstWinStartY
+	Sensor_WriteReg(0x0F12, outer_y * 1024 / height);       //REG_TC_AF_FstWinStartY
+
 	Sensor_WriteReg(0x002A, 0x029C);       //AF window setting
 	Sensor_WriteReg(0x0F12, inner_x * 1024 / width);       //REG_TC_AF_ScndWinStartX
 	Sensor_WriteReg(0x0F12, inner_y * 1024 / height);       //REG_TC_AF_ScndWinStartY
+
+	Sensor_WriteReg(0x002A, 0x02A0);       //AF window setting
+	Sensor_WriteReg(0x0F12, inner_width);  //REG_TC_AF_ScndWinSizeX
+	Sensor_WriteReg(0x0F12, inner_height); //REG_TC_AF_ScndWinSizeY
+
 	Sensor_WriteReg(0x002A, 0x02A4);       //AF window setting
 	Sensor_WriteReg(0x0F12, 0x0001);       //REG_TC_AF_WinSizesUpdated
 
-	SENSOR_PRINT_HIGH("REG_TC_AF_FstWinStartX 0x%04X(%d), REG_TC_AF_FstWinStartY0x%04X(%d),",
+	SENSOR_PRINT_HIGH("REG_TC_AF_FstWinStartX 0x%04X(%d), REG_TC_AF_FstWinStartY 0x%04X(%d),",
 			outer_x * 1024 / width, outer_x * 1024 / width,
 			outer_y * 1024 / width, outer_y * 1024 / width);
 	SENSOR_PRINT_HIGH("REG_TC_AF_ScndWinStartX 0x%04X(%d), REG_TC_AF_ScndWinStartY 0x%04X(%d),",
@@ -1259,12 +1350,12 @@ LOCAL uint32_t _s5k4ecgx_reset_focus_touch_position(void)
 	Sensor_WriteReg(0x002A, 0x0294);//AF window setting
 	Sensor_WriteReg(0x0F12, 0x0100);//294 //REG_TC_AF_FstWinStartX
 	Sensor_WriteReg(0x0F12, 0x00E3);//296 //REG_TC_AF_FstWinStartY
-	Sensor_WriteReg(0x0F12, 0x0200);//298
-	Sensor_WriteReg(0x0F12, 0x0238);//29A
+	Sensor_WriteReg(0x0F12, 0x0200);//298 //REG_TC_AF_FstWinSizeX
+	Sensor_WriteReg(0x0F12, 0x0238);//29A //REG_TC_AF_FstWinSizeY
 	Sensor_WriteReg(0x0F12, 0x01C6);//29C //REG_TC_AF_ScndWinStartX
 	Sensor_WriteReg(0x0F12, 0x0166);//29E //REG_TC_AF_ScndWinStartY
-	Sensor_WriteReg(0x0F12, 0x0074);//2A0
-	Sensor_WriteReg(0x0F12, 0x0132);//2A2
+	Sensor_WriteReg(0x0F12, 0x0074);//2A0 //REG_TC_AF_ScndWinSizeX
+	Sensor_WriteReg(0x0F12, 0x0132);//2A2 //REG_TC_AF_ScndWinSizeY
 	Sensor_WriteReg(0x0F12, 0x0001);//2A4 //REG_TC_AF_WinSizesUpdated
 	s_af_wnd_has_changed = 0;
 	SENSOR_PRINT_HIGH("Done.");
@@ -1534,6 +1625,7 @@ LOCAL uint32_t s5k4ec_set_Metering(uint32_t metering_mode)
 		1 == metering_mode ? "Spot" :
 		"Center Weighted"
 	);
+	s_metering_mode = metering_mode;
 
 	return 0;
 }

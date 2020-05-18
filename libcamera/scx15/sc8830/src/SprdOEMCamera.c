@@ -5573,6 +5573,16 @@ int camera_get_sensor_capture_mode(struct img_size* target_size, uint32_t *work_
 			height = sn_info->sensor_mode_info[i].trim_height;
 			CMR_LOGI("height = %d", height);
 			if (search_height <= height) {
+				/*
+				 * Do a quick area check, make sure that we'd rather
+				 * do a scale down rather than scale up
+				 */
+				width = sn_info->sensor_mode_info[i].trim_width;
+				if (search_width > width) {
+					CMR_LOGI("horizontal resolution too small, skipping");
+					last_mode = i;
+					continue;
+				}
 				target_mode = i;
 				ret = CAMERA_SUCCESS;
 				break;

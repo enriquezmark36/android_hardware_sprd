@@ -136,17 +136,17 @@
 /* constraint imposed by VBC: all period sizes must be multiples of 160 */
 #define VBC_BASE_FRAME_COUNT 160
 /* number of base blocks in a short period (low latency) */
-#define SHORT_PERIOD_MULTIPLIER 4 /* 18.125 ms */
+#define SHORT_PERIOD_MULTIPLIER 8 /* 29 ms */
 /* number of frames per short period (low latency) */
 #define SHORT_PERIOD_SIZE (VBC_BASE_FRAME_COUNT * SHORT_PERIOD_MULTIPLIER)
 /* number of short periods in a long period (low power) */
 #ifdef _LPA_IRAM
-#define LONG_PERIOD_MULTIPLIER 5 /* 90.625 ms */
+#define LONG_PERIOD_MULTIPLIER 20 /* 90.625 ms */
 #else
-#define LONG_PERIOD_MULTIPLIER 20  /* 362.5 ms */
+#define LONG_PERIOD_MULTIPLIER 80  /* 362.5 ms */
 #endif
 /* number of frames per long period (low power) */
-#define LONG_PERIOD_SIZE (SHORT_PERIOD_SIZE * LONG_PERIOD_MULTIPLIER)
+#define LONG_PERIOD_SIZE (VBC_BASE_FRAME_COUNT * LONG_PERIOD_MULTIPLIER)
 /* number of periods for low power playback */
 #define PLAYBACK_LONG_PERIOD_COUNT 2
 /* number of pseudo periods for low latency playback */
@@ -189,17 +189,6 @@ struct pcm_config pcm_config_mm = {
     .rate = DEFAULT_OUT_SAMPLING_RATE,
     .period_size = LONG_PERIOD_SIZE,
     .period_count = PLAYBACK_LONG_PERIOD_COUNT,
-    .format = PCM_FORMAT_S16_LE,
-    .start_threshold = SHORT_PERIOD_SIZE,
-    .avail_min = SHORT_PERIOD_SIZE,
-};
-
-
-struct pcm_config pcm_config_mm_fast = {
-    .channels = 2,
-    .rate = DEFAULT_OUT_SAMPLING_RATE,
-    .period_size = SHORT_PERIOD_SIZE,
-    .period_count = PLAYBACK_SHORT_PERIOD_COUNT,
     .format = PCM_FORMAT_S16_LE,
     .start_threshold = SHORT_PERIOD_SIZE/2,
     .avail_min = SHORT_PERIOD_SIZE/2,
@@ -1613,12 +1602,8 @@ static int start_output_stream(struct tiny_stream_out *out)
         }
         BLUE_TRACE("open s_tinycard in");
         card = s_tinycard;
-	if(out->flags & AUDIO_OUTPUT_FLAG_DEEP_BUFFER) {
-	    out->config = pcm_config_mm;
-	}
-	else {
-	    out->config = pcm_config_mm_fast;
-	}
+        out->config = pcm_config_mm;
+        out->write_threshold = -1;
         out->low_power = 1;
 
         out->pcm = pcm_open(card, port, PCM_OUT | PCM_MMAP | PCM_NOIRQ, &out->config);
@@ -1701,6 +1686,8 @@ static size_t out_get_buffer_size(const struct audio_stream *stream)
        multiple of 16 frames, as audioflinger expects audio buffers to
        be a multiple of 16 frames */
     size_t size = (out->config.period_size * DEFAULT_OUT_SAMPLING_RATE) / out->config.rate;
+    size = (size * DEFAULT_OUT_SAMPLING_RATE) / out->config.rate;
+
     size = ((size + 15) / 16) * 16;
     BLUE_TRACE("[TH] size=%d, frame_size=%d", size, audio_stream_frame_size(stream));
     return size * audio_stream_frame_size(stream);
@@ -2118,7 +2105,7 @@ static ssize_t out_write(struct audio_stream_out *stream, const void* buffer,
     size_t out_frames =0;
     struct tiny_stream_in *in;
     bool low_power;
-    int kernel_frames;
+    int kernel_frames = 0;
     void *buf;
     static long time1=0, time2=0, deltatime=0, deltatime2=0;
     static long time3=0, time4=0, deltatime3=0,write_index=0, writebytes=0;
@@ -2234,13 +2221,15 @@ static ssize_t out_write(struct audio_stream_out *stream, const void* buffer,
         in_frames = bytes / frame_size;
         out_frames = RESAMPLER_BUFFER_SIZE / frame_size;
 
-        if ((low_power != out->low_power) && (out->flags & AUDIO_OUTPUT_FLAG_DEEP_BUFFER)) {
+        if ((low_power != out->low_power) || (out->write_threshold == -1)) {
             if (low_power) {
-                out->config.avail_min = (out->config.period_size*out->config.period_count * 3) / 4;
+                out->config.avail_min = LONG_PERIOD_SIZE * PLAYBACK_LONG_PERIOD_COUNT - in_frames + VBC_BASE_FRAME_COUNT;
+                out->write_threshold = out->config.avail_min;
                 ALOGW("low_power out->write_threshold=%d, config.avail_min=%d, start_threshold=%d",
                         out->write_threshold,out->config.avail_min, out->config.start_threshold);
             } else {
-                out->config.avail_min = SHORT_PERIOD_SIZE/2;
+                out->config.avail_min = SHORT_PERIOD_SIZE / 2;
+                out->write_threshold = SHORT_PERIOD_SIZE * (PLAYBACK_SHORT_PERIOD_COUNT);
                 ALOGW("out->write_threshold=%d, config.avail_min=%d, start_threshold=%d",
                         out->write_threshold,out->config.avail_min, out->config.start_threshold);
             }
@@ -2260,6 +2249,27 @@ static ssize_t out_write(struct audio_stream_out *stream, const void* buffer,
             out_frames = in_frames;
             buf = (void *)buffer;
         }
+
+        /* do not allow more than out->write_threshold frames in kernel pcm driver buffer */
+        do {
+            struct timespec time_stamp;
+
+            if (pcm_get_htimestamp(out->pcm, (unsigned int *)&kernel_frames, &time_stamp) < 0)
+                break;
+            kernel_frames = pcm_get_buffer_size(out->pcm) - kernel_frames;
+
+            if (kernel_frames > out->write_threshold){
+                unsigned long time = (unsigned long)
+                        (((int64_t)(kernel_frames - out->write_threshold) * 1000000) /
+                                DEFAULT_OUT_SAMPLING_RATE);
+
+                if (time < MIN_WRITE_SLEEP_US)
+                    time = MIN_WRITE_SLEEP_US;
+                usleep(time);
+            }
+
+        } while (kernel_frames > out->write_threshold);
+
         XRUN_TRACE("in_frames=%d, out_frames=%d", in_frames, out_frames);
         XRUN_TRACE("out->write_threshold=%d, config.avail_min=%d, start_threshold=%d",
                 out->write_threshold,out->config.avail_min, out->config.start_threshold);
@@ -2267,6 +2277,7 @@ static ssize_t out_write(struct audio_stream_out *stream, const void* buffer,
             time1 = getCurrentTimeUs();
         }
         ret = pcm_mmap_write(out->pcm, (void *)buf, out_frames * frame_size);//music playback
+
         if(modem->debug_info.enable) {
             time2 = getCurrentTimeUs();
             deltatime2 = ((time1>time2)?(time1-time2):(time2-time1));
@@ -3312,12 +3323,7 @@ static int adev_open_output_stream(struct audio_hw_device *dev,
     out->stream.write = out_write;
     out->stream.get_render_position = out_get_render_position;
 
-    if(flags&AUDIO_OUTPUT_FLAG_DEEP_BUFFER) {
-	out->config = pcm_config_mm;
-    }
-    else {
-	out->config = pcm_config_mm_fast;
-    }
+    out->config = pcm_config_mm;
 
     out->dev = ladev;
     out->standby = 1;

@@ -494,6 +494,9 @@ int arithmetic_hdr_init(uint32_t pic_width, uint32_t pic_height)
 	} else {
 		s_hdr_cxt->mem_size = size;
 	}
+#ifdef CONFIG_SPRD_HDR_LIB
+	sprd_hdr_pool_init();
+#endif
 	return ret;
 }
 
@@ -522,6 +525,10 @@ int arithmetic_hdr_deinit(void)
 	s_hdr_cxt->inited = 0;
 	pthread_mutex_unlock(&s_arith_cxt->hdr_lock);
 	pthread_mutex_destroy(&s_arith_cxt->hdr_lock);
+
+#ifdef CONFIG_SPRD_HDR_LIB
+	sprd_hdr_pool_destroy();
+#endif
 
 	CMR_LOGD("e.");
 	return ret;

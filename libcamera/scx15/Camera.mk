@@ -259,11 +259,19 @@ endif
 LOCAL_MODULE_TAGS := optional
 
 ifeq ($(strip $(sc8830like)),1)
-LOCAL_SHARED_LIBRARIES := libexif libutils libbinder libcamera_client libskia libcutils libsqlite libhardware libmorpho_easy_hdr libcamera_metadata libmemoryheapion
+LOCAL_SHARED_LIBRARIES := libexif libutils libbinder libcamera_client libskia libcutils libsqlite libhardware libcamera_metadata libmemoryheapion
 LOCAL_SHARED_LIBRARIES += \
 	libnativewindow \
 	libgui \
 	liblog
+endif
+
+ifeq ($(strip $(TARGET_BOARD_CAMERA_HDR_CAPTURE)),true)
+LOCAL_CFLAGS += -DCONFIG_SPRD_HDR_LIB
+LOCAL_SHARED_LIBRARIES += libsprd_easy_hdr
+else
+LOCAL_SHARED_LIBRARIES += \
+	libmorpho_easy_hdr
 endif
 
 ifdef CONFIG_CAMERA_ISP
@@ -292,6 +300,17 @@ include $(CLEAR_VARS)
 LOCAL_PREBUILT_LIBS := arithmetic/sc8830/libmorpho_easy_hdr.so
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_MULTI_PREBUILT)
+
+ifeq ($(strip $(TARGET_BOARD_CAMERA_HDR_CAPTURE)),true)
+	include $(CLEAR_VARS)
+	LOCAL_MODULE := libsprd_easy_hdr
+	LOCAL_MODULE_CLASS := SHARED_LIBRARIES
+	LOCAL_MODULE_TAGS := optional
+	LOCAL_MODULE_SUFFIX := .so
+	LOCAL_SRC_FILES := arithmetic/sc8830/libsprd_easy_hdr.so
+	LOCAL_MODULE_PATH := $(TARGET_COPY_OUT_VENDOR)/lib
+	include $(BUILD_PREBUILT)
+endif
 
 endif
 

@@ -82,10 +82,24 @@ extern "C" void _ZN7android14acquire_objectERKNS_2spINS_12ProcessStateEEERK18fla
     real_acquire_object(proc, obj, who, NULL);
 }
 
-/** property_get() */
-extern "C" int ____prop_get(const char *key, char *value, const char *default_value)
+extern "C" int property_get(const char *key, char *value, const char *default_value)
 {
     auto search = KEY_MAP.find(key);
+
+    /*
+     * There are times when the symbol is not yet available.
+     * This is usually due to the order of linking cause by the method used to
+     * apply the shim layer.
+     */
+    if (__builtin_expect(!real_property_get, 0)) {
+        real_property_get = (int (*)(const char*, char*, const char*)) dlsym(RTLD_NEXT, "property_get");
+        if (!real_property_get) {
+            ALOGI("dlsym() cannot find the real_property_get() symbol: %s", dlerror());
+            strcpy(value, default_value);
+            return strlen(default_value);
+        }
+    }
+
     if (search != KEY_MAP.end()) {
         std::string actual_key = (*search).second.first;
         size_t index = (*search).second.second;
@@ -101,10 +115,18 @@ extern "C" int ____prop_get(const char *key, char *value, const char *default_va
     return real_property_get(key, value, default_value);
 }
 
-/** property_set() */
-extern "C" int ____prop_set(const char *key, const char *value)
+extern "C" int property_set(const char *key, const char *value)
 {
     auto search = KEY_MAP.find(key);
+
+    if (__builtin_expect(!real_property_set, 0)) {
+        real_property_set = (int (*)(const char*, const char*)) dlsym(RTLD_NEXT, "property_set");
+        if (!real_property_set) {
+            ALOGI("dlsym() cannot find the real_property_set() symbol: %s", dlerror());
+            return -1;
+        }
+    }
+
     if (search != KEY_MAP.end()) {
         std::string actual_key = (*search).second.first;
         size_t index = (*search).second.second;

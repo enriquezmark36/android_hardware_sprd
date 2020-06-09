@@ -3381,20 +3381,12 @@ status_t SprdCameraHardware::set_ddr_freq(uint32_t mhzVal)
 			break;
 
 		default:
-			LOGE("set_ddr_freq unrecognize set frequency, error!");
-			break;
+			LOGE("set_ddr_freq unrecognize set frequency, error! X");
+			fclose(fp);
+			return BAD_VALUE;
 	}
 
-	fclose(fp);
-	fp = NULL;
-
-	fp = fopen(set_freq, "wb");
-	if (NULL == fp) {
-		LOGE("set_ddr_freq Failed to open %s X", set_freq);
-		return BAD_VALUE;
-	}
-
-	if (tmpSetFreqCount < 0)
+	if (tmpSetFreqCount >= 0)
 		fprintf(fp, "%s", freq_in_khz);
 	mSetDDRFreq = mhzVal;
 	mSetDDRFreqCount = tmpSetFreqCount > 0 ? tmpSetFreqCount : 0;

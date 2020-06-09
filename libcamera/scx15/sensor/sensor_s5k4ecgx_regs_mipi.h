@@ -17,7 +17,7 @@
 //#include "../sc8830/inc/SprdCameraHardwareConfig.h"
 
 
-/* Enum Type for different ISO Mode supported */
+/* Enum for different ISO Mode supported */
 enum {
 	CAMERA_ISO_AUTO = 0,
 	CAMERA_ISO_100,
@@ -27,9 +27,11 @@ enum {
 	CAMERA_ISO_1600,
 	CAMERA_ISO_50,
 	CAMERA_ISO_300,
+	CAMERA_ISO_600,
 	CAMERA_ISO_MAX
 };
 
+/* Enum for different Scene modes used in SPRD libcamera */
 enum {
 	CAMERA_SCENE_MODE_AUTO = 0,
 	CAMERA_SCENE_MODE_NIGHT,
@@ -52,7 +54,39 @@ enum {
 	CAMERA_SCENE_MODE_MAX
 };
 
+/* Enum for the AE metering modes used in SPRD libcamera */
+enum {
+	CAMERA_AE_FRAME_AVG = 0,
+	CAMERA_AE_CENTER_WEIGHTED,
+	CAMERA_AE_SPOT_METERING,
+	CAMERA_AE_MODE_MAX
+};
 
+/* Enum for the anti flicker modes used in SPRD libcamera */
+enum {
+	CAMERA_ANTIBANDING_50HZ,
+	CAMERA_ANTIBANDING_60HZ,
+	CAMERA_ANTIBANDING_OFF,
+	CAMERA_ANTIBANDING_AUTO,
+	CAMERA_MAX_ANTIBANDING,
+};
+
+/* Enum for the bits in REG_TC_DBG_AutoAlgEnBits */
+enum {
+	AA_ALL,             // 0
+	AA_AE_ACTIVE,       // 1
+	AA_DIV_LEI,         // 2
+	AA_WB_ACTIVE,       // 3
+                            //
+	AA_USE_WB_FOR_ISP,  // 4
+	AA_FLICKER,         // 5
+	AA_FIT,             // 6
+                            //
+	AA_7, // unused     // 7
+	AA_8, // unused     // 8
+	AA_WR_ISP_HW,       // 9
+	AA_WR_SEN_HW,       // 10
+};
 //==========================================================
 // Init
 //==========================================================
@@ -2039,12 +2073,11 @@ LOCAL SENSOR_REG_T s5k4ec_common_init[] = {
 
 	{0x002A, 0x164C},
 	{0x0F12, 0x0003},
-	{0x002A, 0x163E},
 
-	// {0x0F12, 0x00D5},
-	// {0x0F12, 0x0080},   //98(60%) -> CC(80%)
-	{0x0F12, 0x00C2},
-	{0x0F12, 0x0098},   //98(60%) -> CC(80%)
+
+	{0x002A, 0x163E},   // thresholds in 8.8 format: 98(60%) -> C2(75%)
+	{0x0F12, 0x00C2},   //af_search_usPeakThr
+	{0x0F12, 0x0098},   //af_search_usPeakThrLow
 
 
 	{0x002A, 0x15D4},
@@ -2066,9 +2099,9 @@ LOCAL SENSOR_REG_T s5k4ec_common_init[] = {
 	{0x0F12, 0x0010},
 	{0x002A, 0x1656},
 	{0x0F12, 0x0000},
+
 	{0x002A, 0x15E6},
 	{0x0F12, 0x003C},
-
 	{0x0F12, 0x0018},   //af_pos_usTableLastInd
 	{0x0F12, 0x002A},
 	{0x0F12, 0x0030},
@@ -2105,10 +2138,10 @@ LOCAL SENSOR_REG_T s5k4ec_common_init[] = {
 
 	// {0x0F12, 0x0003},   //delay2 when threshold upper lens moving when moving distance 9 delay 80h 12.8ms delay
 	{0x0F12, 0x0008},   // delay2 ??
-
 	{0x0F12, 0x0001},   //threshold
-	{0x0F12, 0x0004},   //delay1 ??
-	{0x0F12, 0x0080},
+
+	{0x0F12, 0x0004},   // signal shaping
+	{0x0F12, 0x0080},   // signal shaping levels
 	{0x0F12, 0x00C0},
 	{0x0F12, 0x00E0},
 	{0x0F12, 0x0000},
@@ -2541,19 +2574,17 @@ LOCAL SENSOR_REG_T s5k4ec_common_init[] = {
 	{0x0F12, 0xC350},		//C350
 	{0x0F12, 0x0000},		//0000
 
-	//???
 	{0x002A, 0x0660},
-	{0x0F12, 0x0650},
-	{0x0F12, 0x0100},
+	{0x0F12, 0x0650}, //lt_ExpGain_ExpCurveGainMaxStr_1_
+	{0x0F12, 0x0100}, //lt_ExpGain_ExpCurveGainMaxStr_1__uMaxDigGain
 
 	// Lei Control
 	{0x002A, 0x06B8},
 	{0x0F12, 0x452C},
 	{0x0F12, 0x0005},	 //lt_uMaxLei
 
-	//?????
 	{0x002A, 0x05D0},
-	{0x0F12, 0x0000},
+	{0x0F12, 0x0000}, //lt_mbr_Peak_behind
 
 	//==================================================================================
 	// 13.AE Weight (Normal)
@@ -3628,60 +3659,190 @@ LOCAL SENSOR_REG_T s5k4ec_common_init[] = {
 
 //==========================================================
 // ISO
+// NOTE: These reg settings came from stock. Except that
+//       these will not change the anti-flicker settings
+// NOTE: Manual ISO settings will DISABLE the Digital gain
+//       (or the so called Extended ISOs).
 //==========================================================
 LOCAL SENSOR_REG_T  s5k4ec_ISO_auto[] = {
+	{0xFCFC, 0xD000},
 	{0x0028, 0x7000},
-	{0x002A ,0x04D0},
-	{0x0F12 ,0x0000},
-	{0x0F12 ,0x0000},
-	{0x0F12 ,0x0001},
+
+	{0x002A, 0x0938},
+	{0x0F12, 0x0000},	//afit_bUseNB_Afit
+	{0x0F12, 0x0014},	//SARR_uNormBrInDoor_0_
+	{0x0F12, 0x00D2},	//SARR_uNormBrInDoor_1_
+	{0x0F12, 0x0384},	//SARR_uNormBrInDoor_2_
+	{0x0F12, 0x07D0},	//SARR_uNormBrInDoor_3_
+	{0x0F12, 0x1388},	//SARR_uNormBrInDoor_4_
+
+	{0x002A, 0x04D0},
+	{0x0F12, 0x0000}, // REG_SF_USER_IsoType: 0- Auto 1- Classic 2-Sport
+	{0x0F12, 0x0000}, // REG_SF_USER_IsoVal
+	{0x0F12, 0x0001}, // REG_SF_USER_IsoChanged
+
+	{0x002A, 0x06C2},
+	{0x0F12, 0x0200}, //lt_bUseSecISODgain
+
 	{0xFFFF, 0xFFFF}
 };
 
 LOCAL SENSOR_REG_T  s5k4ec_ISO_50[] = {
+	{0xFCFC, 0xD000},
 	{0x0028, 0x7000},
-	{0x002A ,0x04D0},
-	{0x0F12 ,0x0001},
-	{0x0F12 ,0x0100},
-	{0x0F12 ,0x0001},
+	{0x002A, 0x0938},
+	{0x0F12, 0x0001},	//afit_bUseNB_Afit
+	{0x0F12, 0x0014},	//SARR_uNormBrInDoor_0_
+	{0x0F12, 0x00D2},	//SARR_uNormBrInDoor_1_
+	{0x0F12, 0x0384},	//SARR_uNormBrInDoor_2_
+	{0x0F12, 0x07D0},	//SARR_uNormBrInDoor_3_
+	{0x0F12, 0x1388},	//SARR_uNormBrInDoor_4_
+
+	{0x002A, 0x04D0},
+	{0x0F12, 0x0001},	//REG_SF_USER_IsoType
+	{0x0F12, 0x0100},	//REG_SF_USER_IsoVal
+	{0x0F12, 0x0001},	//REG_SF_USER_IsoChanged
+
+	{0x002A, 0x06C2},
+	{0x0F12, 0x0100},	//lt_bUseSecISODgain
 	{0xFFFF, 0xFFFF}
 };
 
 LOCAL SENSOR_REG_T  s5k4ec_ISO_100[] = {
+	{0xFCFC, 0xD000},
 	{0x0028, 0x7000},
-	{0x002A ,0x04D0},
-	{0x0F12 ,0x0001},
-	{0x0F12 ,0x01A0},
-	{0x0F12 ,0x0001},
+	{0x002A, 0x0938},
+	{0x0F12, 0x0001},	//afit_bUseNB_Afit
+	{0x0F12, 0x0014},	//SARR_uNormBrInDoor_0_
+	{0x0F12, 0x00D2},	//SARR_uNormBrInDoor_1_
+	{0x0F12, 0x0384},	//SARR_uNormBrInDoor_2_
+	{0x0F12, 0x07D0},	//SARR_uNormBrInDoor_3_
+	{0x0F12, 0x1388},	//SARR_uNormBrInDoor_4_
+
+	{0x002A, 0x04D0},
+	{0x0F12, 0x0001},	//REG_SF_USER_IsoType
+	{0x0F12, 0x01BA},	//REG_SF_USER_IsoVal
+	{0x0F12, 0x0001},	//REG_SF_USER_IsoChanged
+	{0x002A, 0x06C2},
+	{0x0F12, 0x0100},	//lt_bUseSecISODgain
+
 	{0xFFFF, 0xFFFF}
 };
 
 LOCAL SENSOR_REG_T  s5k4ec_ISO_200[] = {
+	{0xFCFC, 0xD000},
 	{0x0028, 0x7000},
-	{0x002A ,0x04D0},
-	{0x0F12 ,0x0001},
-	{0x0F12 ,0x0458},
-	{0x0F12 ,0x0001},
-	{0xFFFF, 0xFFFF}
-};
+	{0x002A, 0x0938},
+	{0x0F12, 0x0001},	//afit_bUseNB_Afit
+	{0x0F12, 0x0114},	//SARR_uNormBrInDoor_0_
+	{0x0F12, 0x04A2},	//SARR_uNormBrInDoor_1_
+	{0x0F12, 0x0584},	//SARR_uNormBrInDoor_2_
+	{0x0F12, 0x08D0},	//SARR_uNormBrInDoor_3_
+	{0x0F12, 0x1388},	//SARR_uNormBrInDoor_4_
 
-LOCAL SENSOR_REG_T  s5k4ec_ISO_300[] = {
-	{0x0028, 0x7000},
-	{0x002A ,0x04D0},
-	{0x0F12 ,0x0001},
-	{0x0F12 ,0x0710},
-	{0x0F12 ,0x0001},
+	{0x002A, 0x04D0},
+	{0x0F12, 0x0001},	//REG_SF_USER_IsoType
+	{0x0F12, 0x0374},	//REG_SF_USER_IsoVal
+	{0x0F12, 0x0001},	//REG_SF_USER_IsoChanged
+	{0x002A, 0x06C2},
+	{0x0F12, 0x0100},	//lt_bUseSecISODgain
+
 	{0xFFFF, 0xFFFF}
 };
 
 LOCAL SENSOR_REG_T  s5k4ec_ISO_400[] = {
+	{0xFCFC, 0xD000},
 	{0x0028, 0x7000},
-	{0x002A ,0x04D0},
-	{0x0F12 ,0x0001},
-	{0x0F12 ,0x0C80},
-	{0x0F12 ,0x0001},
+
+	{0x002A, 0x0938},
+	{0x0F12, 0x0001},	//afit_bUseNB_Afit
+	{0x0F12, 0x0214},	//SARR_uNormBrInDoor_0_
+	{0x0F12, 0x0BD2},	//SARR_uNormBrInDoor_1_
+	{0x0F12, 0x0C84},	//SARR_uNormBrInDoor_2_
+	{0x0F12, 0x10D0},	//SARR_uNormBrInDoor_3_
+	{0x0F12, 0x1388},	//SARR_uNormBrInDoor_4_
+
+	{0x002A, 0x04D0},
+	{0x0F12, 0x0001},	//REG_SF_USER_IsoType
+	{0x0F12, 0x06F4},	//REG_SF_USER_IsoVal
+	{0x0F12, 0x0001},	//REG_SF_USER_IsoChanged
+
+	{0x002A, 0x06C2},
+	{0x0F12, 0x0100},	//lt_bUseSecISODgain
+
 	{0xFFFF, 0xFFFF}
 };
+
+// These reg settings are experimental
+LOCAL SENSOR_REG_T  s5k4ec_ISO_300[] = {
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
+
+	{0x002A, 0x0938},
+	{0x0F12, 0x0001},	//afit_bUseNB_Afit
+	{0x0F12, 0x0214},	//SARR_uNormBrInDoor_0_
+	{0x0F12, 0x0BD2},	//SARR_uNormBrInDoor_1_
+	{0x0F12, 0x0C84},	//SARR_uNormBrInDoor_2_
+	{0x0F12, 0x10D0},	//SARR_uNormBrInDoor_3_
+	{0x0F12, 0x1388},	//SARR_uNormBrInDoor_4_
+
+	{0x002A, 0x04D0},
+	{0x0F12, 0x0001},	//REG_SF_USER_IsoType
+	{0x0F12, 0x0534},	//REG_SF_USER_IsoVal
+	{0x0F12, 0x0001},	//REG_SF_USER_IsoChanged
+
+	{0x002A, 0x06C2},
+	{0x0F12, 0x0100},	//lt_bUseSecISODgain
+
+	{0xFFFF, 0xFFFF}
+};
+
+LOCAL SENSOR_REG_T  s5k4ec_ISO_600[] = {
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
+
+	{0x002A, 0x0938},
+	{0x0F12, 0x0001},	//afit_bUseNB_Afit
+	{0x0F12, 0x0214},	//SARR_uNormBrInDoor_0_
+	{0x0F12, 0x0BD2},	//SARR_uNormBrInDoor_1_
+	{0x0F12, 0x0C84},	//SARR_uNormBrInDoor_2_
+	{0x0F12, 0x10D0},	//SARR_uNormBrInDoor_3_
+	{0x0F12, 0x1388},	//SARR_uNormBrInDoor_4_
+
+	{0x002A, 0x04D0},
+	{0x0F12, 0x0001},	//REG_SF_USER_IsoType
+	{0x0F12, 0x0C80},	//REG_SF_USER_IsoVal
+	{0x0F12, 0x0001},	//REG_SF_USER_IsoChanged
+
+	{0x002A, 0x06C2},
+	{0x0F12, 0x0100},	//lt_bUseSecISODgain
+
+	{0xFFFF, 0xFFFF}
+};
+
+LOCAL SENSOR_REG_T  s5k4ec_ISO_800[] = {
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
+
+	{0x002A, 0x0938},
+	{0x0F12, 0x0001},	//afit_bUseNB_Afit
+	{0x0F12, 0x0214},	//SARR_uNormBrInDoor_0_
+	{0x0F12, 0x0BD2},	//SARR_uNormBrInDoor_1_
+	{0x0F12, 0x0C84},	//SARR_uNormBrInDoor_2_
+	{0x0F12, 0x10D0},	//SARR_uNormBrInDoor_3_
+	{0x0F12, 0x1388},	//SARR_uNormBrInDoor_4_
+
+	{0x002A, 0x04D0},
+	{0x0F12, 0x0001},	//REG_SF_USER_IsoType
+	{0x0F12, 0x1680},	//REG_SF_USER_IsoVal
+	{0x0F12, 0x0001},	//REG_SF_USER_IsoChanged
+
+	{0x002A, 0x06C2},
+	{0x0F12, 0x0100},	//lt_bUseSecISODgain
+
+	{0xFFFF, 0xFFFF}
+};
+
 
 //==========================================================
 // Scenes (Alphabetically arranged)
@@ -3746,8 +3907,6 @@ LOCAL SENSOR_REG_T s5k4ec_scene_beach[] = {
 LOCAL SENSOR_REG_T s5k4ec_scene_candlelight[] = {
 	{0xFCFC, 0xD000},
 	{0x0028, 0x7000},
-	{0x002A, 0x04E6},
-	{0x0F12, 0x0777},
 	{0x0020, 0x04BA},
 	{0x0F10, 0x04DA},
 	{0x002A, 0x04BE},
@@ -3762,8 +3921,6 @@ LOCAL SENSOR_REG_T s5k4ec_scene_candlelight[] = {
 LOCAL SENSOR_REG_T s5k4ec_scene_dawn[] = {
 	{0xFCFC, 0xD000},
 	{0x0028, 0x7000},
-	{0x002A, 0x04E6},
-	{0x0F12, 0x0777},
 	{0x002A, 0x04BA},
 	{0x0F12, 0x0558},
 	{0x002A, 0x04BE},
@@ -3918,12 +4075,19 @@ LOCAL SENSOR_REG_T s5k4ec_scene_night[] = {
 	{0x0F12, 0x0006},
 	{0x0F12, 0x1A80},
 	{0x0F12, 0x0006},
-	{0x002A, 0x02C2},
+
+	{0x002A, 0x02BE},
+	{0x0F12, 0x0000},
+	{0x0F12, 0x0000},
 	{0x0F12, 0x07D0},
 	{0x0F12, 0x014A},
-	{0x002A, 0x03B4},
-	{0x0F12, 0x1388},
-	{0x0F12, 0x1388},
+
+	{0x002A, 0x03B0},
+	{0x0F12, 0x0000},
+	{0x0F12, 0x0002},
+	{0x0F12, 0x1964}, //1.5fps min
+	{0x0F12, 0x0000},
+
 	{0x002A, 0x1648},
 	{0x0F12, 0x9000},
 	{0x002A, 0x15E8},
@@ -4025,16 +4189,17 @@ LOCAL SENSOR_REG_T s5k4ec_scene_off[] = {
 	{0x0F12, 0x0000},
 	{0x0F12, 0xC350},
 	{0x0F12, 0x0000},
+
+// A separate reg setting might override this
 	{0x002A, 0x02C2},
 	{0x0F12, 0x029A},
 	{0x0F12, 0x014A},
 	{0x002A, 0x03B4},
 	{0x0F12, 0x0535},
 	{0x0F12, 0x029A},
+
 	{0x002A, 0x0938},
 	{0x0F12, 0x0000},
-	{0x002A, 0x04E6},
-	{0x0F12, 0x077F},
 	{0x002A, 0x1484},
 	{0x0F12, 0x003C},
 	{0x002A, 0x04D0},
@@ -4171,8 +4336,6 @@ LOCAL SENSOR_REG_T s5k4ec_scene_sports[] = {
 LOCAL SENSOR_REG_T s5k4ec_scene_sunset[] = {
 	{0xFCFC, 0xD000},
 	{0x0028, 0x7000},
-	{0x002A, 0x04E6},
-	{0x0F12, 0x0777},
 	{0x002A, 0x04BA},
 	{0x0F12, 0x04DA},
 	{0x002A, 0x04BE},
@@ -4200,6 +4363,151 @@ LOCAL SENSOR_REG_T s5k4ec_scene_text[] = {
 	{0xFFFF, 0xFFFF},
 };
 
+//==========================================================
+// Anti-Scenes
+// NOTE: These reg settings are pieces that could revert
+// some changes of a scene mode. These are used to avoid
+// firing CAMERA_SCENE_MODE_AUTO everytime a use has
+// to change scene. s5k4ec_scene_off has over 136 values
+// and takes few miliseconds to finish.
+// NOTE: Not just because some are named after their scene
+// means that they could fully revert the changes.
+// It just means that the reg setting came from that scene.
+//==========================================================
+LOCAL SENSOR_REG_T s5k4ec_scene_revert_sharpness0[] = {
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
+	{0x002A, 0x0A28},
+	{0x0F12, 0x6024},	//_ee_iLowSharpPower
+	{0x002A, 0x0ADE},
+	{0x0F12, 0x6024},	//_ee_iLowSharpPower
+	{0x002A, 0x0B94},
+	{0x0F12, 0x6024},	//_ee_iLowSharpPower
+	{0x002A, 0x0C4A},
+	{0x0F12, 0x6024},	//_ee_iLowSharpPower
+	{0x002A, 0x0D00},
+	{0x0F12, 0x6024},	//_ee_iLowSharpPower
+	{0x0F12, 0x6024},	//_ee_iLowSharpPower
+	{0xFFFF, 0xFFFF},
+};
+
+LOCAL SENSOR_REG_T s5k4ec_scene_revert_gain[] = {
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
+
+	{0x002A, 0x0638},
+	{0x0F12, 0x0001},
+	{0x0F12, 0x0000}, //lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_0_
+	{0x0F12, 0x0A3C},
+	{0x0F12, 0x0000}, //lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_1_
+	{0x0F12, 0x0D05},
+	{0x0F12, 0x0000}, //lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_2_
+	{0x0F12, 0x3408},
+	{0x0F12, 0x0000}, //lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_3_
+	{0x0F12, 0x3408},
+	{0x0F12, 0x0000}, //lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_4_
+	{0x0F12, 0x6810},
+	{0x0F12, 0x0000}, //lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_5_
+	{0x0F12, 0x8214},
+	{0x0F12, 0x0000}, //lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_6_
+	{0x0F12, 0xC350},
+	{0x0F12, 0x0000}, //lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_7_
+	{0x0F12, 0xC350},
+	{0x0F12, 0x0000}, //lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_8_
+	{0x0F12, 0xC350},
+	{0x0F12, 0x0000}, //lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_9_
+	{0xFFFF, 0xFFFF},
+};
+
+LOCAL SENSOR_REG_T s5k4ec_scene_revert_night[] = {
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
+
+	{0x002A, 0x0A1E},
+	{0x0F12, 0x0350}, //_ccm_oscar_iSaturation
+
+	{0x002A, 0x1648},
+	{0x0F12, 0x9002}, // af_search_usSingleAfFlags
+
+	{0x002A, 0x06B8},
+	{0x0F12, 0x452C},
+	{0x0F12, 0x0005}, //lt_uMaxLei
+
+	{0xFFFF, 0xFFFF},
+};
+
+LOCAL SENSOR_REG_T s5k4ec_scene_revert_sports[] = {
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
+
+	{0x002A, 0x0544},
+	{0x0F12, 0x0111}, //lt_uLimitHigh
+	{0x0F12, 0x00EF}, //lt_uLimitLow
+
+	{0x002A, 0x0938},
+	{0x0F12, 0x0000}, // afit_bUseNB_Afit
+
+	{0xFFFF, 0xFFFF},
+};
+
+//==========================================================
+// Sharpness
+// NOTE: This changes the REG_TC_UserSharpBlur register
+// instead of the AFIT8_ee_iHighSharpPower registers
+// Let the scene mode do that for us.
+//==========================================================
+LOCAL SENSOR_REG_T s5k4ec_sharpness_default[]=
+{
+	{0x0028, 0x7000},
+	{0x002A, 0x0236},
+	{0x0F12, 0x0000},
+	{0xFFFF, 0xFFFF},
+};
+
+LOCAL SENSOR_REG_T s5k4ec_sharpness_plus_1[]=
+{
+	{0x0028, 0x7000},
+	{0x002A, 0x0236},
+	{0x0F12, 0x0080},
+	{0xFFFF, 0xFFFF},
+};
+
+LOCAL SENSOR_REG_T s5k4ec_sharpness_plus_2[] =
+{
+	{0x0028, 0x7000},
+	{0x002A, 0x0236},
+	{0x0F12, 0x0100},
+	{0xFFFF, 0xFFFF},
+};
+
+LOCAL SENSOR_REG_T s5k4ec_sharpness_plus_3[] =
+{
+	{0x0028, 0x7000},
+	{0x002A, 0x0236},
+	{0x0F12, 0x0200},
+	{0xFFFF, 0xFFFF},
+};
+
+LOCAL SENSOR_REG_T s5k4ec_sharpness_minus_1[] = {
+	{0x0028, 0x7000},
+	{0x002A, 0x0236},
+	{0x0F12, 0xFF80},
+	{0xFFFF, 0xFFFF},
+};
+
+LOCAL SENSOR_REG_T s5k4ec_sharpness_minus_2[] = {
+	{0x0028, 0x7000},
+	{0x002A, 0x0236},
+	{0x0F12, 0xFF00},
+	{0xFFFF, 0xFFFF},
+};
+
+LOCAL SENSOR_REG_T s5k4ec_sharpness_minus_3[] = {
+	{0x0028, 0x7000},
+	{0x002A, 0x0236},
+	{0x0F12, 0xFE00},
+	{0xFFFF, 0xFFFF},
+};
 
 //==========================================================
 // SPRD Image params
@@ -4288,57 +4596,21 @@ LOCAL SENSOR_REG_T s5k4ec_image_effect_tab[][15] = {
 	{
 		{0x0028, 0x7000},
 		{0x002A, 0x023C},
-		{0x0F12, 0x0000},
-		{0x002A, 0x04E6},
-		{0x0F12, 0x0777},
-
-		{0x002A, 0x04BA},
-		{0x0F12, 0x0300},
-		{0x0F12, 0x0001},
-		{0x002A, 0x04BE},
-		{0x0F12, 0x0100},
-		{0x0F12, 0x0001},
-		{0x002A, 0x04C2},
-		{0x0F12, 0x0100},
-		{0x0F12, 0x0001},
+		{0x0F12, 0x0006},
 		{0xFFFF, 0xFFFF}
 	},
 	// CAMERA_EFFECT_GREEN         --effect green-tinted
 	{
 		{0x0028, 0x7000},
 		{0x002A, 0x023C},
-		{0x0F12, 0x0000},
-		{0x002A, 0x04E6},
-		{0x0F12, 0x0777},
-
-	  	{0x002A, 0x04BA},
-	  	{0x0F12, 0x0100},
-	  	{0x0F12, 0x0001},
-	  	{0x002A, 0x04BE},
-	  	{0x0F12, 0x0200},
-	  	{0x0F12, 0x0001},
-	  	{0x002A, 0x04C2},
-	  	{0x0F12, 0x0100},
-	  	{0x0F12, 0x0001},
+		{0x0F12, 0x0008},
 		{0xFFFF, 0xFFFF}
 	},
 	// CAMERA_EFFECT_BLUE         --effect blue-tinted
 	{
 		{0x0028, 0x7000},
 		{0x002A, 0x023C},
-		{0x0F12, 0x0000},
-		{0x002A, 0x04E6},
-		{0x0F12, 0x0777},
-
-		{0x002A, 0x04BA},
-		{0x0F12, 0x0100},
-		{0x0F12, 0x0001},
-		{0x002A, 0x04BE},
-		{0x0F12, 0x0100},
-		{0x0F12, 0x0001},
-		{0x002A, 0x04C2},
-		{0x0F12, 0x0200},
-		{0x0F12, 0x0001},
+		{0x0F12, 0x0007},
 		{0xFFFF, 0xFFFF}
 	},
 	// CAMERA_EFFECT_YELLOW       --effect solarize
@@ -4362,26 +4634,47 @@ LOCAL SENSOR_REG_T s5k4ec_image_effect_tab[][15] = {
 		{0x0F12, 0x0004},
 		{0xFFFF, 0xFFFF}
 	},
+	// CAMERA_EFFECT_AQUA    --effect ???
+	{
+		{0x0028, 0x7000},
+		{0x002A, 0x023C},
+		{0x0F12, 0x0005},
+		{0xFFFF, 0xFFFF}
+	},
+	// CAMERA_EFFECT_SKETCH    --effect ???
+	{
+		{0x0028, 0x7000},
+		{0x002A, 0x023C},
+		{0x0F12, 0x0009},
+		{0xFFFF, 0xFFFF}
+	},
+
 };
 
 LOCAL SENSOR_REG_T s5k4ec_anti_banding_flicker_tab[][7] = {
-	{//50hz
+	{//50hz CAMERA_ANTIBANDING_50HZ
 		{0x0028, 0x7000},
-		{0x002a, 0x04e6},
-		{0x0f12, 0x075f},
-		{0x002a, 0x04d6},
-		{0x0f12, 0x0001},
-		{0x0f12, 0x0001},
-		{0xffff, 0xffff}
+		{0x002A, 0x04D6},
+		{0x0F12, 0x0001},
+		{0x0F12, 0x0001},
+		{0xFFFF, 0xFFFF}
 	},
-	{//60hz
+	{//60hz CAMERA_ANTIBANDING_60HZ
 		{0x0028, 0x7000},
-		{0x002a, 0x04e6},
-		{0x0f12, 0x075f},
-		{0x002a, 0x04d6},
-		{0x0f12, 0x0002},
-		{0x0f12, 0x0001},
-		{0xffff, 0xffff}
+		{0x002A, 0x04D6},
+		{0x0F12, 0x0002},
+		{0x0F12, 0x0001},
+		{0xFFFF, 0xFFFF}
+	},
+	{//OFF CAMERA_ANTIBANDING_OFF
+		{0x0028, 0x7000},
+		{0x002A, 0x04D6},
+		{0x0F12, 0x0000},
+		{0x0F12, 0x0001},
+		{0xFFFF, 0xfFFF}
+	},
+	{//AUTO CAMERA_ANTIBANDING_AUTO
+		{0xFFFF, 0xFFFF}
 	}
 };
 
@@ -4482,70 +4775,108 @@ LOCAL SENSOR_REG_T s5k4ec_video_mode_tab[][40] = {
 	}
 };
 
-LOCAL SENSOR_REG_T s5k4ec_awb_tab[][13] = {
+LOCAL SENSOR_REG_T s5k4ec_awb_tab[][11] = {
 	//AUTO
 	{
-		{0x0028, 0x7000},
-		{0x002A ,0x04E6}, {0x0F12 ,0x077F}, {0xffff, 0xffff},
-		{0xffff, 0xffff}, {0xffff, 0xffff}, {0xffff, 0xffff},
-		{0xffff, 0xffff}, {0xffff, 0xffff}, {0xffff, 0xffff},
-		{0xffff, 0xffff}, {0xffff, 0xffff}, {0xffff, 0xffff},
+		{0xffff, 0xffff},
 	},
 	//INCANDESCENCE:
 	{
 		{0x0028, 0x7000},
-		{0x002A ,0x04E6}, {0x0F12 ,0x0777}, {0x002A ,0x04BA},
-		{0x0F12 ,0x066e}, {0x0F12 ,0x0001}, {0x002A ,0x04Be},
-		{0x0F12 ,0x0400}, {0x0F12 ,0x0001}, {0x002A ,0x04c2},
-		{0x0F12 ,0x0476}, {0x0F12 ,0x0001}, {0xffff, 0xffff}
+		{0x002A ,0x04BA},
+		{0x0F12 ,0x066E},
+		{0x0F12 ,0x0001},
+		{0x002A ,0x04BE},
+		{0x0F12 ,0x0400},
+		{0x0F12 ,0x0001},
+		{0x002A ,0x04C2},
+		{0x0F12 ,0x0476},
+		{0x0F12 ,0x0001},
+		{0xFFFF, 0xFFFF},
 	},
 	//CWF equal to flourescent(auto),1
 	{
 		{0x0028, 0x7000},
-		{0x002A ,0x04E6}, {0x0F12 ,0x0777}, {0x002A ,0x04BA},
-		{0x0F12 ,0x0575}, {0x0F12 ,0x0001}, {0x002A ,0x04Be},
-		{0x0F12 ,0x0400}, {0x0F12 ,0x0001}, {0x002A ,0x04c2},
-		{0x0F12 ,0x0800}, {0x0F12 ,0x0001}, {0xffff, 0xffff}
+		{0x002A ,0x04BA},
+		{0x0F12 ,0x0575},
+		{0x0F12 ,0x0001},
+		{0x002A ,0x04BE},
+		{0x0F12 ,0x0400},
+		{0x0F12 ,0x0001},
+		{0x002A ,0x04C2},
+		{0x0F12 ,0x0800},
+		{0x0F12 ,0x0001},
+		{0xFFFF, 0xFFFF}
 	},
 	//U30(auto),2
 	{
 		{0x0028, 0x7000},
-		{0x002A ,0x04E6}, {0x0F12 ,0x0777}, {0x002A ,0x04BA},
-		{0x0F12 ,0x0800}, {0x0F12 ,0x0001}, {0x002A ,0x04Be},
-		{0x0F12 ,0x0400}, {0x0F12 ,0x0001}, {0x002A ,0x04c2},
-		{0x0F12 ,0x0800}, {0x0F12 ,0x0001}, {0xffff, 0xffff}
+		{0x002A ,0x04BA},
+		{0x0F12 ,0x0800},
+		{0x0F12 ,0x0001},
+		{0x002A ,0x04BE},
+		{0x0F12 ,0x0400},
+		{0x0F12 ,0x0001},
+		{0x002A ,0x04C2},
+		{0x0F12 ,0x0800},
+		{0x0F12 ,0x0001},
+		{0xFFFF, 0xFFFF}
 	},
 	//CWF equal to flourescent(auto),3
 	{
 		{0x0028, 0x7000},
-		{0x002A ,0x04E6}, {0x0F12 ,0x0777}, {0x002A ,0x04BA},
-		{0x0F12 ,0x0575}, {0x0F12 ,0x0001}, {0x002A ,0x04Be},
-		{0x0F12 ,0x0400}, {0x0F12 ,0x0001}, {0x002A ,0x04c2},
-		{0x0F12 ,0x0800}, {0x0F12 ,0x0001}, {0xffff, 0xffff}
+		{0x002A ,0x04BA},
+		{0x0F12 ,0x0575},
+		{0x0F12 ,0x0001},
+		{0x002A ,0x04BE},
+		{0x0F12 ,0x0400},
+		{0x0F12 ,0x0001},
+		{0x002A ,0x04C2},
+		{0x0F12 ,0x0800},
+		{0x0F12 ,0x0001},
+		{0xffff, 0xFFFF}
 	},
 	//FLUORESCENT:4
 	{
 		{0x0028, 0x7000},
-		{0x002A ,0x04E6}, {0x0F12 ,0x0777}, {0x002A ,0x04BA},
-		{0x0F12 ,0x0400}, {0x0F12 ,0x0001}, {0x002A ,0x04Be},
-		{0x0F12 ,0x0400}, {0x0F12 ,0x0001}, {0x002A ,0x04c2},
-		{0x0F12 ,0x0940}, {0x0F12 ,0x0001}, {0xffff, 0xffff}
+		{0x002A ,0x04BA},
+		{0x0F12 ,0x0400},
+		{0x0F12 ,0x0001},
+		{0x002A ,0x04BE},
+		{0x0F12 ,0x0400},
+		{0x0F12 ,0x0001},
+		{0x002A ,0x04C2},
+		{0x0F12 ,0x0940},
+		{0x0F12 ,0x0001},
+		{0xFFFF, 0xFFFF}
 	},
 	//SUN:5
 	{
 		{0x0028, 0x7000},
-		{0x002A ,0x04E6}, {0x0F12 ,0x0777}, {0x002A ,0x04BA},
-		{0x0F12 ,0x05e0}, {0x0F12 ,0x0001}, {0x002A ,0x04Be},
-		{0x0F12 ,0x0400}, {0x0F12 ,0x0001}, {0x002A ,0x04c2},
-		{0x0F12 ,0x0530}, {0x0F12 ,0x0001}, {0xffff, 0xffff}
+		{0x002A ,0x04BA},
+		{0x0F12 ,0x05E0},
+		{0x0F12 ,0x0001},
+		{0x002A ,0x04BE},
+		{0x0F12 ,0x0400},
+		{0x0F12 ,0x0001},
+		{0x002A ,0x04C2},
+		{0x0F12 ,0x0530},
+		{0x0F12 ,0x0001},
+		{0xFFFF, 0xFFFF}
 	},
 	//CLOUD:6
 	{
 		{0x0028, 0x7000},
-		{0x002A ,0x04E6}, {0x0F12 ,0x0777}, {0x002A ,0x04BA},
-		{0x0F12 ,0x0740}, {0x0F12 ,0x0001}, {0x002A ,0x04Be},
-		{0x0F12 ,0x0400}, {0x0F12 ,0x0001}, {0x002A ,0x04c2},
-		{0x0F12 ,0x0460}, {0x0F12 ,0x0001}, {0xffff, 0xffff}
+		{0x002A ,0x04BA},
+		{0x0F12 ,0x0740},
+		{0x0F12 ,0x0001},
+		{0x002A ,0x04BE},
+		{0x0F12 ,0x0400},
+		{0x0F12 ,0x0001},
+		{0x002A ,0x04C2},
+		{0x0F12 ,0x0460},
+		{0x0F12 ,0x0001},
+		{0xFFFF, 0xFFFF}
 	}
 };
 
@@ -4556,8 +4887,19 @@ LOCAL SENSOR_REG_T s5k4ec_awb_tab[][13] = {
  * are used to tweak the brightness.
  * I only used 2 sources both are conflicting so I'll use
  * the settings opposite from the stock rom.
+ *
+ * UPDATE: Using the (outdated) datasheet for the s5k4ecgx sensor
+ * Here's what these tables changes:
+ *   TVAR_ae_BrAve (ev from stock rom)
+ *     - Changes the AE's target average brightness
+ *   REG_TC_UserBrightness (ev from sprd opensource)
+ *     - Changes the output brightness
+ *   REG_TC_UserExposureVal88 (ev from the datasheet)
+ *     - Controls the Exposure which _WILL_ affect framerate.
+ *
+ * We'll use the REG_TC_UserExposureVal88 instead
  */
-LOCAL SENSOR_REG_T s5k4ec_brightness_tab[][7] = {
+LOCAL SENSOR_REG_T s5k4ec_ae_brightness_tab[][7] = {
 	{//level -3 TVAR_ae_BrAve
 		{0x0028, 0x7000},{0x002A, 0x1484},{0x0F12, 0x000C}, {0xffff, 0xffff}
 	},
@@ -4582,26 +4924,26 @@ LOCAL SENSOR_REG_T s5k4ec_brightness_tab[][7] = {
 };
 
 LOCAL SENSOR_REG_T s5k4ec_ev_tab[][4] = {
-	{//level -3
-		{0x0028, 0x7000},  {0x002A ,0x0230}, {0x0F12 ,0xFF81}, {0xffff, 0xffff}
+	{//level -3 REG_TC_UserExposureVal88 (2/5 of default)
+		{0x0028, 0x7000}, {0x002A ,0x023A}, {0x0F12 ,0x0067}, {0xffff, 0xffff}
 	},
-	{//level -2
-		{0x0028, 0x7000}, {0x002A ,0x0230}, {0x0F12 ,0xFFAC}, {0xffff, 0xffff}
+	{//level -2 (1/2 of default)
+		{0x0028, 0x7000}, {0x002A ,0x023A}, {0x0F12, 0x0080}, {0xffff, 0xffff}
 	},
-	{//level -1
-		{0x0028, 0x7000},  {0x002A ,0x0230}, {0x0F12 ,0xFFD5}, {0xffff, 0xffff}
+	{//level -1 (2/3 of default)
+		{0x0028, 0x7000}, {0x002A ,0x023A}, {0x0F12 ,0x00C0}, {0xffff, 0xffff}
 	},
 	{//level 0
-		{0x0028, 0x7000},  {0x002A ,0x0230}, {0x0F12 ,0x0000}, {0xffff, 0xffff}
+		{0x0028, 0x7000}, {0x002A ,0x023A}, {0x0F12 ,0x0100}, {0xffff, 0xffff}
 	},
-	{//level 1
-		{0x0028, 0x7000},  {0x002A ,0x0230}, {0x0F12 ,0x002B}, {0xffff, 0xffff}
+	{//level 1 (1.5 times of default)
+		{0x0028, 0x7000}, {0x002A ,0x023A}, {0x0F12 ,0x0180}, {0xffff, 0xffff}
 	},
-	{//level 2
-		{0x0028, 0x7000},  {0x002A ,0x0230}, {0x0F12 ,0x0057}, {0xffff, 0xffff}
+	{//level 2 (2 times of default)
+		{0x0028, 0x7000}, {0x002A ,0x023A}, {0x0F12 ,0x0200}, {0xffff, 0xffff}
 	},
-	{//level 3
-		{0x0028, 0x7000},  {0x002A ,0x0230}, {0x0F12 ,0x007F}, {0xffff, 0xffff}
+	{//level 3 (2.5 times of default)
+		{0x0028, 0x7000}, {0x002A ,0x023A}, {0x0F12 ,0x0280}, {0xffff, 0xffff}
 	}
 };
 
@@ -4610,7 +4952,6 @@ LOCAL SENSOR_REG_T s5k4ec_ev_tab[][4] = {
 //==========================================================
 
 LOCAL SENSOR_REG_T s5k4ec_night_mode_On[] = {
-	{0x0028, 0x7000},
 	{0x0028, 0x7000},
 	{0x002A, 0x0608},
 	{0x0F12, 0x0001}, /*#lt_ExpGain_uSubsamplingmode*/
@@ -4627,14 +4968,17 @@ LOCAL SENSOR_REG_T s5k4ec_low_cap_On[] = {
 	{0x0028, 0x7000},
 
 	{0x002A, 0x06B8},
-	{0x0F12, 0xFFFF},
-	{0x0F12, 0x00FF}, //lt_uMaxLei
+	{0x0F12, 0xFFFF}, //lt_uMaxLei
+	{0x0F12, 0x00FF}, //lt_usMinExp
+
 	{0x002A, 0x0A1A},
 	{0x0F12, 0x4A18}, //Gamma linearity
+
 	{0x002A, 0x0608},
 	{0x0F12, 0x0001}, //lt_ExpGain_uSubsamplingmode
 	{0x0F12, 0x0001}, //lt_ExpGain_uNonSubsampling
 	{0x0F12, 0x0850}, //lt_ExpGain_ExpCurveGainMaxStr
+
 	{0x002A, 0x0938},
 	{0x0F12, 0x0001},
 	{0x0F12, 0x0012}, //SARR_uNormBrInDoor_0_
@@ -4642,15 +4986,48 @@ LOCAL SENSOR_REG_T s5k4ec_low_cap_On[] = {
 	{0x0F12, 0x0384}, //SARR_uNormBrInDoor_2_
 	{0x0F12, 0x07D0}, //SARR_uNormBrInDoor_3_
 	{0x0F12, 0x1388}, //SARR_uNormBrInDoor_4_
+
+	{0x002A, 0x0638},
+	{0x0F12, 0x0001},
+	{0x0F12, 0x0000},/*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_0_ */
+	{0x0F12, 0x0A3C},
+	{0x0F12, 0x0000},/*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_1_ */
+	{0x0F12, 0x0D05},
+	{0x0F12, 0x0000},/*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_2_ */
+	{0x0F12, 0x3408},
+	{0x0F12, 0x0000},/*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_3_ */
+	{0x0F12, 0x3408},
+	{0x0F12, 0x0000},/*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_4_ */
+	{0x0F12, 0xD020},
+	{0x0F12, 0x0000},/*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_5_ */
+	{0x0F12, 0x0428},
+	{0x0F12, 0x0001},/*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_6_ */
+	{0x0F12, 0x1A80},
+	{0x0F12, 0x0006},/*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_7_ */
+	{0x0F12, 0x1A80},
+	{0x0F12, 0x0006},/*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_8_ */
+	{0x0F12, 0x1A80},
+	{0x0F12, 0x0006},/*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_9_ */
+
+	{0x002A, 0x0266},
+	{0x0F12, 0x0000}, /*REG_TC_GP_ActivePrevConfig */
+	{0x002A, 0x024E},
+	{0x0F12, 0x0001}, /*REG_TC_GP_NewConfigSync */
+	{0x002A, 0x0270},
+	{0x0F12, 0x0001}, /*REG_TC_GP_CapConfigChanged */
+
 	{0xFFFF, 0xFFFF},
 };
 
 LOCAL SENSOR_REG_T s5k4ec_low_cap_Off[] = {
+	{0x0028, 0x7000},
 	{0x002A, 0x06B8},
 	{0x0F12, 0x452C},
 	{0x0F12, 0x0005}, //lt_uMaxLei
+
 	{0x002A, 0x0A1A},
 	{0x0F12, 0x8F18}, //Gamma linearity
+
 	{0x002A, 0x0608},
 	{0x0F12, 0x0001}, //lt_ExpGain_uSubsamplingmode
 	{0x0F12, 0x0001}, //lt_ExpGain_uNonSubsampling
@@ -4662,6 +5039,30 @@ LOCAL SENSOR_REG_T s5k4ec_low_cap_Off[] = {
 	{0x0F12, 0x0384}, //#SARR_uNormBrInDoor_2_
 	{0x0F12, 0x07D0}, //#SARR_uNormBrInDoor_3_
 	{0x0F12, 0x1388}, //#SARR_uNormBrInDoor_4_
+
+	//Exposure
+	{0x002A, 0x0638},		//0638
+	{0x0F12, 0x0001},		//0001
+	{0x0F12, 0x0000},		//0000 lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_0_
+	{0x0F12, 0x0A3C},		//0A3C
+	{0x0F12, 0x0000},		//0000
+	{0x0F12, 0x0D05},		//0D05
+	{0x0F12, 0x0000},		//0000
+	{0x0F12, 0x3408},		//3408
+	{0x0F12, 0x0000},		//0000
+	{0x0F12, 0x3408},		//3408
+	{0x0F12, 0x0000},		//0000
+	{0x0F12, 0x6810},		//6810
+	{0x0F12, 0x0000},		//0000
+	{0x0F12, 0x8214},		//8214
+	{0x0F12, 0x0000},		//0000
+	{0x0F12, 0xC350},		//C350
+	{0x0F12, 0x0000},		//0000
+	{0x0F12, 0xC350},		//C350
+	{0x0F12, 0x0000},		//0000
+	{0x0F12, 0xC350},		//C350
+	{0x0F12, 0x0000},		//0000
+
 	{0xFFFF, 0xFFFF},
 };
 
@@ -4718,25 +5119,108 @@ LOCAL SENSOR_REG_T s5k4ec_AF_normal_mode_3[] = {
 };
 
 LOCAL SENSOR_REG_T s5k4ec_AF_macro_mode_1[] = {
+	{0xFCFC, 0xD000},
 	{0x0028, 0x7000},
-	{0x002A, 0x0288},
+	{0x002A, 0x028E},
 	{0x0F12, 0x00D0},
 	{0xFFFF, 0xFFFF},
 };
 
 LOCAL SENSOR_REG_T s5k4ec_AF_macro_mode_2[] = {
-	{0x002A, 0x0286},
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
+	{0x002A, 0x028C},
 	{0x0F12, 0x0004},
 	{0xFFFF, 0xFFFF},
 };
 
 LOCAL SENSOR_REG_T s5k4ec_AF_macro_mode_3[] = {
-	{0x002A, 0x160C},
-	{0x0F12, 0x1042},
-	{0x002A, 0x159E},
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
+
+	{0x002A, 0x1648},
+	{0x0F12, 0x9042},
+
+	{0x002A, 0x15E8},
+	{0x0F12, 0x0017},   //af_pos_usTableLastInd, 24 stops
+	{0x0F12, 0x0032},
+	{0x0F12, 0x0038},
+	{0x0F12, 0x003E},
+	{0x0F12, 0x0044},
+	{0x0F12, 0x004A},
+	{0x0F12, 0x0050},
+	{0x0F12, 0x0056},
+	{0x0F12, 0x005C},
+	{0x0F12, 0x0062},
+	{0x0F12, 0x0068},
+	{0x0F12, 0x006E},
+	{0x0F12, 0x0074},
+	{0x0F12, 0x007A},
+	{0x0F12, 0x0080},
+	{0x0F12, 0x0086},
+	{0x0F12, 0x008C},
+	{0x0F12, 0x0092},
+	{0x0F12, 0x0098},
+	{0x0F12, 0x009E},
+	{0x0F12, 0x00A4},
+	{0x0F12, 0x00AA},
+	{0x0F12, 0x00B0},
+	{0x0F12, 0x00C0},
+	{0x0F12, 0x00D0},
+
+	{0x002A, 0x15DA}, 	// 16 start number of table 00 End number of table
 	{0x0F12, 0x1700},
 	{0xFFFF, 0xFFFF},
 
+};
+
+LOCAL SENSOR_REG_T s5k4ec_AF_continuous_mode_1[] = {
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
+
+	{0x002A, 0x163E},
+	{0x0F12, 0x00E6},   //af_search_usPeakThr
+	{0x0F12, 0x00C2},   //af_search_usPeakThrLow
+
+	{0x002A, 0x028E},
+	{0x0F12, 0x0000},   //REG_TC_AF_AfCmdParam
+
+	{0xFFFF, 0xFFFF},
+};
+
+LOCAL SENSOR_REG_T s5k4ec_AF_continuous_mode_2[] = {
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
+
+	{0x002A, 0x15E8},
+	{0x0F12, 0x0018}, //#af_pos_usTableLastInd// table0 ~ table24,  25 Steps
+	{0x0F12, 0x0018}, //#af_pos_usTable_0_ // af_pos_usTable
+	{0x0F12, 0x0030}, //#af_pos_usTable_1_
+	{0x0F12, 0x0048}, //#af_pos_usTable_2_
+	{0x0F12, 0x0058}, //#af_pos_usTable_3_
+	{0x0F12, 0x0068}, //#af_pos_usTable_4_
+	{0x0F12, 0x0070}, //#af_pos_usTable_5_
+	{0x0F12, 0x0078}, //#af_pos_usTable_6_
+	{0x0F12, 0x0080}, //#af_pos_usTable_7_
+	{0x0F12, 0x0088}, //#af_pos_usTable_8_
+	{0x0F12, 0x0090}, //#af_pos_usTable_9_
+	{0x0F12, 0x0098}, //#af_pos_usTable_10_
+	{0x0F12, 0x0090}, //#af_pos_usTable_11_
+	{0x0F12, 0x0098}, //#af_pos_usTable_12_
+	{0x0F12, 0x0054}, //#af_pos_usTable_13_
+	{0x0F12, 0x0058}, //#af_pos_usTable_14_
+	{0x0F12, 0x005C}, //#af_pos_usTable_15_
+	{0x0F12, 0x0060}, //#af_pos_usTable_16_
+	{0x0F12, 0x0064}, //#af_pos_usTable_17_
+	{0x0F12, 0x0068}, //#af_pos_usTable_18_
+	{0x0F12, 0x006C}, //#af_pos_usTable_19_
+	{0x0F12, 0x0070}, //#af_pos_usTable_20_
+	{0x0F12, 0x0074}, //#af_pos_usTable_21_
+	{0x0F12, 0x0078}, //#af_pos_usTable_22_
+	{0x0F12, 0x007C}, //#af_pos_usTable_23_
+	{0x0F12, 0x0080}, //#af_pos_usTable_24_
+
+	{0xFFFF, 0xFFFF},
 };
 
 LOCAL SENSOR_REG_T s5k4ec_single_AF_start[] = {
@@ -4744,6 +5228,14 @@ LOCAL SENSOR_REG_T s5k4ec_single_AF_start[] = {
 	{0x0028, 0x7000},
 	{0x002A, 0x028C},
 	{0x0F12, 0x0005},
+	{0xFFFF, 0xFFFF},
+};
+
+LOCAL SENSOR_REG_T s5k4ec_continuous_AF_start[] = {
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
+	{0x002A, 0x028C},
+	{0x0F12, 0x0006},
 	{0xFFFF, 0xFFFF},
 };
 
@@ -4757,15 +5249,28 @@ LOCAL SENSOR_REG_T s5k4ec_AF_off_1[] = {
 	{0xFFFF, 0xFFFF},
 };
 
-LOCAL SENSOR_REG_T s5k4ec_AF_return_inf_pos[] = {
-	{0x002A, 0x15D6},
-	{0x0F12, 0xD000},
+LOCAL SENSOR_REG_T s5k4ec_AF_revert_continuous_mode[] = {
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
+	{0x002A, 0x163E},
+	{0x0F12, 0x00C2},   //af_search_usPeakThr
+	{0x0F12, 0x0098},   //af_search_usPeakThrLow
+	{0xFFFF, 0xFFFF},
+};
+
+LOCAL SENSOR_REG_T s5k4ec_AF_low_light_macro_mode[] = {
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
+
+	{0x002A, 0x15DA},
+	{0x0F12, 0x0C00},
+
 	{0xFFFF, 0xFFFF},
 };
 
 LOCAL SENSOR_REG_T s5k4ec_AF_low_light_mode_On[] = {
-	{0x002A, 0x15DA},
-	{0x0F12, 0x0C00},
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
 
 	{0x002A, 0x15E8},
 	{0x0F12, 0x000C},
@@ -4782,10 +5287,14 @@ LOCAL SENSOR_REG_T s5k4ec_AF_low_light_mode_On[] = {
 	{0x0F12, 0x0093},
 	{0x0F12, 0x00A2},
 	{0x0F12, 0x00B1},
+
 	{0xFFFF, 0xFFFF},
 };
 
 LOCAL SENSOR_REG_T s5k4ec_AF_low_light_mode_Off[] = {
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
+
 	{0x002A, 0x15DA},
 	{0x0F12, 0x1800},
 
@@ -4829,9 +5338,9 @@ LOCAL SENSOR_REG_T s5k4ec_Auto30_FPS[] = { //10-30 fps
 
 	{0x002A, 0x02BE},
 	{0x0F12, 0x0000},
-	{0x0F12, 0x0001},
+	{0x0F12, 0x0000},
 	{0x0F12, 0x03E8}, //29A = 66.7msec(15fps) //03E8 = 100msec (10fps) // 7D0 = 200msec (5fps)
-	{0x0F12, 0x014A},
+	{0x0F12, 0x0000},
 
 	{0x002A, 0x0266},
 	{0x0F12, 0x0000},
@@ -4945,6 +5454,38 @@ LOCAL SENSOR_REG_T s5k4ec_15_FPS[] = {
 	{0xFFFF, 0xFFFF},
 };
 
+LOCAL SENSOR_REG_T s5k4ec_24_FPS[] = {
+	{0xFCFC, 0xD000},
+	{0x0028, 0xD000},
+
+	{0x002A, 0xF132},
+	{0x0F12, 0x0200},
+
+	{0x002A, 0xF142},
+	{0x0F12, 0x0200},
+
+	{0x0028, 0x7000},
+
+	{0x002A, 0x02B4},
+	{0x0F12, 0x0012},
+
+	{0x002A, 0x02BE},
+	{0x0F12, 0x0000},
+	{0x0F12, 0x0001},
+	{0x0F12, 0x01A0},
+	{0x0F12, 0x01A0},
+
+	{0x002A, 0x0266},
+	{0x0F12, 0x0000},
+	{0x002A, 0x026A},
+	{0x0F12, 0x0001},
+	{0x002A, 0x024E},
+	{0x0F12, 0x0001},
+	{0x002A, 0x0268},
+	{0x0F12, 0x0001},
+	{0xFFFF, 0xFFFF},
+};
+
 LOCAL SENSOR_REG_T s5k4ec_25_FPS[] = {
 	{0xFCFC, 0xD000},
 	{0x0028, 0xD000},
@@ -4989,9 +5530,6 @@ LOCAL SENSOR_REG_T s5k4ec_30_FPS[] = {
 
 	{0x0028, 0x7000},
 
-	{0x002A, 0x02B4},
-	{0x0F12, 0x0052},
-
 	{0x002A, 0x02BE},
 	{0x0F12, 0x0000},
 	{0x0F12, 0x0001},
@@ -5008,15 +5546,63 @@ LOCAL SENSOR_REG_T s5k4ec_30_FPS[] = {
 	{0x0F12, 0x1388},
 
 	{0x002A, 0x0266},
-	{0x0F12, 0x0000},
+	{0x0F12, 0x0000}, //REG_TC_GP_ActivePrevConfig
 	{0x002A, 0x026A},
-	{0x0F12, 0x0001},
+	{0x0F12, 0x0001}, //REG_TC_GP_PrevOpenAfterChange
 	{0x002A, 0x024E},
-	{0x0F12, 0x0001},
+	{0x0F12, 0x0001}, //REG_TC_GP_NewConfigSync
 	{0x002A, 0x0268},
-	{0x0F12, 0x0001},
+	{0x0F12, 0x0001}, //REG_TC_GP_PrevConfigChanged
 	{0xFFFF, 0xFFFF},
 };
+
+//==========================================================
+// Capture FPS modes
+// NOTE: This indirectly affects the slowest possible
+// shutter speed used on photos.
+// CAUTION: These regs have to be set to 1 when using this
+//    REG_TC_GP_NewConfigSync and REG_TC_GP_CapConfigChanged
+//    Yet, these reg settings don't. Since most often, the
+//    succeeding reg settings will eventually call it.
+//==========================================================
+
+// "short exposure" mode. Stock settings. Up to 133 milliseconds
+// Used for normal photography with/without flash.
+LOCAL SENSOR_REG_T s5k4ec_capture_short_FPS[] = {
+	{0x0028, 0x7000},
+	{0x002A, 0x03B0},
+	{0x0F12, 0x0000}, // REG_0TC_CCFG_usFrTimeType
+	{0x0F12, 0x0000}, // REG_0TC_CCFG_FrRateQualityType
+	{0x0F12, 0x0535}, // REG_0TC_CCFG_usMaxFrTimeMsecMult10
+	{0x0F12, 0x029A}, // REG_0TC_CCFG_usMinFrTimeMsecMult10
+	{0xFFFF, 0xFFFF},
+};
+
+// "Medium exposure" mode. Up to 325 milliseconds
+// Used in non-flash low light capture
+LOCAL SENSOR_REG_T s5k4ec_capture_med_FPS[] = {
+	{0x0028, 0x7000},
+	{0x002A, 0x03B0},
+	{0x0F12, 0x0000}, // REG_0TC_CCFG_usFrTimeType
+	{0x0F12, 0x0002}, // REG_0TC_CCFG_FrRateQualityType
+	{0x0F12, 0x0CB2}, // REG_0TC_CCFG_usMaxFrTimeMsecMult10
+	{0x0F12, 0x0000}, // REG_0TC_CCFG_usMinFrTimeMsecMult10
+	{0xFFFF, 0xFFFF},
+};
+
+// "Long exposure" mode. Up to 650 milliseconds
+// Built in the night scene mode reg setting.
+// Basically, this is just for display.
+LOCAL SENSOR_REG_T s5k4ec_capture_long_FPS[] = {
+	{0x0028, 0x7000},
+	{0x002A, 0x03B0},
+	{0x0F12, 0x0000}, // REG_0TC_CCFG_usFrTimeType
+	{0x0F12, 0x0002}, // REG_0TC_CCFG_FrRateQualityType
+	{0x0F12, 0x1964}, // REG_0TC_CCFG_usMaxFrTimeMsecMult10
+	{0x0F12, 0x0000}, // REG_0TC_CCFG_usMinFrTimeMsecMult10
+	{0xFFFF, 0xFFFF},
+};
+
 
 //==========================================================
 // Metering modes
@@ -5154,6 +5740,7 @@ LOCAL SENSOR_REG_T s5k4ec_metering_center_weighted[] = {
 //==========================================================
 // State Triggers
 //==========================================================
+// Disables capture state (which when enabled, disables both AWB and AE)
 LOCAL SENSOR_REG_T s5k4ec_preview_return[] = {
 	{0xFCFC, 0xD000},
 	{0x0028, 0x7000},
@@ -5166,11 +5753,14 @@ LOCAL SENSOR_REG_T s5k4ec_preview_return[] = {
 	{0xFFFF, 0xFFFF},
 };
 
+// Invokes a Capture request
 LOCAL SENSOR_REG_T s5k4ec_capture_start[] = {
 	{0xFCFC, 0xD000},
+
 	{0x0028, 0x7000},
 	{0x002A, 0x0242},
 	{0x0F12, 0x0001},	//REG_TC_GP_EnableCapture
+
 	{0x002A, 0x024E},
 	{0x0F12, 0x0001},	//REG_TC_GP_NewConfigSync
 	{0x002A, 0x0244},
@@ -5178,10 +5768,42 @@ LOCAL SENSOR_REG_T s5k4ec_capture_start[] = {
 	{0xFFFF, 0xFFFF},
 };
 
+// Disables both Capture and Preview modes/streams
+LOCAL SENSOR_REG_T s5k4ec_Stream_Off[] = {
+	{0x0028, 0x7000},
+	{0x002A, 0x023E},
+	{0x0F12, 0x0000},	//#REG_TC_GP_EnablePreview
+	{0x002A, 0x0242},
+	{0x0F12, 0x0000},	//REG_TC_GP_EnableCapture
+
+	{0x0028, 0xD000},
+	{0x002A, 0xB0A0},
+	{0x0F12, 0x0000},	//Clear cont. clock befor config change
+
+	{0x0028, 0x7000},
+	{0x002A, 0x0240},
+	{0x0F12, 0x0001},	//#REG_TC_GP_EnablePreviewChanged
+	{0x002A, 0x0244},
+	{0x0F12, 0x0001},	//REG_TC_GP_EnableCaptureChanged
+	{0xFFFF, 0xFFFF},
+};
+
+// Enables preview stream
+LOCAL SENSOR_REG_T s5k4ec_preview_Stream_On[] = {
+	{0x0028, 0x7000},
+	{0x002A, 0x023E},
+	{0x0F12, 0x0001},  //#REG_TC_GP_EnablePreview
+	{0x0F12, 0x0001},  //#REG_TC_GP_EnablePreviewChanged
+
+	{0x0028, 0xD000},
+	{0x002A, 0x1000},
+	{0x0F12, 0x0001},
+	{0xFFFF, 0xFFFF},
+};
 
 //==========================================================
 // Preview and Capture Sizes
-// WARNING: Leave out the {0xFFFF, 0xFFFF} at the end
+// CAUTION: Leave out the {0xFFFF, 0xFFFF} at the end
 // 0xFFFF means to sleep for 0xFFFF (65535) milliseconds
 //==========================================================
 // 320X240 YUV (Preview and Capture)
@@ -5192,8 +5814,8 @@ LOCAL SENSOR_REG_T s5k4ec_320X240[] = {
 	{0x002A, 0x18AC},
 	{0x0F12, 0x0060},	//senHal_uAddColsBin
 	{0x0F12, 0x0060},	//senHal_uAddColsNoBin
-	{0x0F12, 0x05C0},	//senHal_uMinColsBin
-	{0x0F12, 0x05C0},	//senHal_uMinColsNoBin
+	{0x0F12, 0x06C8},	//senHal_uMinColsBin
+	{0x0F12, 0x06C8},	//senHal_uMinColsNoBin
 
 	{0x002A, 0x0250},
 	{0x0F12, 0x0A00},	//REG_TC_GP_PrevReqInputWidth //2560
@@ -5232,8 +5854,8 @@ LOCAL SENSOR_REG_T s5k4ec_640X480[] = {
 	{0x002A, 0x18AC},
 	{0x0F12, 0x0060},	//senHal_uAddColsBin
 	{0x0F12, 0x0060},	//senHal_uAddColsNoBin
-	{0x0F12, 0x05C0},	//senHal_uMinColsBin
-	{0x0F12, 0x05C0},	//senHal_uMinColsNoBin
+	{0x0F12, 0x06C8},	//senHal_uMinColsBin
+	{0x0F12, 0x06C8},	//senHal_uMinColsNoBin
 
 	{0x002A, 0x0250},
 	{0x0F12, 0x0A00},	//REG_TC_GP_PrevReqInputWidth //2560
@@ -5273,8 +5895,8 @@ LOCAL SENSOR_REG_T s5k4ec_720X540[] ={
 	{0x002A, 0x18AC},
 	{0x0F12, 0x0060},	//senHal_uAddColsBin
 	{0x0F12, 0x0060},	//senHal_uAddColsNoBin
-	{0x0F12, 0x05C0},	//senHal_uMinColsBin
-	{0x0F12, 0x05C0},	//senHal_uMinColsNoBin
+	{0x0F12, 0x06C8},	//senHal_uMinColsBin
+	{0x0F12, 0x06C8},	//senHal_uMinColsNoBin
 
 	{0x002A, 0x0250},
 	{0x0F12, 0x0A00},	//REG_TC_GP_PrevReqInputWidth //2560
@@ -5314,8 +5936,8 @@ LOCAL SENSOR_REG_T s5k4ec_800X480[] = {
 	{0x002A, 0x18AC},
 	{0x0F12, 0x0060},	//senHal_uAddColsBin
 	{0x0F12, 0x0060},	//senHal_uAddColsNoBin
-	{0x0F12, 0x05C0},	//senHal_uMinColsBin
-	{0x0F12, 0x05C0},	//senHal_uMinColsNoBin
+	{0x0F12, 0x06C8},	//senHal_uMinColsBin
+	{0x0F12, 0x06C8},	//senHal_uMinColsNoBin
 
 	{0x002A, 0x0250},
 	{0x0F12, 0x0A00},	//REG_TC_GP_PrevReqInputWidth //2560
@@ -5365,9 +5987,10 @@ LOCAL SENSOR_REG_T s5k4ec_800X480[] = {
 	{0x0F12, 0x0001},	//REG_TC_GP_CapConfigChanged
 };
 
-//1280X720 YUV (Preview and Capture)
-LOCAL SENSOR_REG_T s5k4ec_1280X720[] = {
+//1024X768 YUV (Preview and Capture)
+LOCAL SENSOR_REG_T s5k4ec_1024X768[] = {
 	{0x0028, 0x7000},
+
 	{0x002A, 0x18AC},
 	{0x0F12, 0x0060},	//	#senHal_uAddColsBin 	//
 	{0x0F12, 0x0060},	//	#senHal_uAddColsNoBin	//
@@ -5375,25 +5998,26 @@ LOCAL SENSOR_REG_T s5k4ec_1280X720[] = {
 	{0x0F12, 0x05C0},	//	#senHal_uMinColsNoBin	//
 
 	{0x002A, 0x02A6},
-	{0x0F12, 0x0500},	//	#REG_0TC_PCFG_usWidth  //Hsize	 : 800			//
-	{0x0F12, 0x02D0}, //	#REG_0TC_PCFG_usHeight//Vsize	: 480		//
+	{0x0F12, 0x0400},	//	#REG_0TC_PCFG_usWidth  //Hsize	: 1024		//
+	{0x0F12, 0x0300},	//	#REG_0TC_PCFG_usHeight //Vsize	: 768		//
 
 	{0x002A, 0x0250},
-	{0x0F12, 0x0A00},	//#REG_TC_GP_PrevReqInputWidth						//Sensor Crop Width 2560
-	{0x0F12, 0x05A0},	//#REG_TC_GP_PrevReqInputHeight 					//Sensor Crop Height	1536
-	{0x0F12, 0x0010},	//#REG_TC_GP_PrevInputWidthOfs						//Sensor HOffset	16 = (2592-2560)/2
-	{0x0F12, 0x00F0},	//#REG_TC_GP_PrevInputHeightOfs 					//Sensor VOffset	204 = (1944-1536)/2
-	{0x0F12, 0x0A00},	//#REG_TC_GP_CapReqInputWidth							//Sensor Crop Width 2560
-	{0x0F12, 0x05A0},	//#REG_TC_GP_CapReqInputHeight						//Sensor Crop Height	1536
-	{0x0F12, 0x0010},	//#REG_TC_GP_CapInputWidthOfs							//Sensor HOffset	16 = (2592-2560)/2
-	{0x0F12, 0x00F0},	//#REG_TC_GP_CapInputHeightOfs						//Sensor VOffset	204 = (1944-1536)/2
+	{0x0F12, 0x0A00},	//#REG_TC_GP_PrevReqInputWidth	//Sensor Crop Width  2560
+	{0x0F12, 0x0780},	//#REG_TC_GP_PrevReqInputHeight //Sensor Crop Height 1920
+	{0x0F12, 0x0010},	//#REG_TC_GP_PrevInputWidthOfs	//Sensor HOffset	16 = (2592-2560)/2
+	{0x0F12, 0x000C},	//#REG_TC_GP_PrevInputHeightOfs //Sensor VOffset	12 = (1944-1920)/2
+	{0x0F12, 0x0A00},	//#REG_TC_GP_CapReqInputWidth	//Sensor Crop Width  2560
+	{0x0F12, 0x0780},	//#REG_TC_GP_CapReqInputHeight	//Sensor Crop Height 1920
+	{0x0F12, 0x0010},	//#REG_TC_GP_CapInputWidthOfs	//Sensor HOffset	16 = (2592-2560)/2
+	{0x0F12, 0x000C},	//#REG_TC_GP_CapInputHeightOfs	//Sensor VOffset	12 = (1944-1920)/2
+
 	{0x002A, 0x0494},
-	{0x0F12, 0x0A00},	//#REG_TC_PZOOM_PrevZoomReqInputWidth			//ISP	Input Width 2560
-	{0x0F12, 0x05A0},	//#REG_TC_PZOOM_PrevZoomReqInputHeight		//ISP	Input Height	1536
+	{0x0F12, 0x0A00},	//#REG_TC_PZOOM_PrevZoomReqInputWidth		//ISP	Input Width 2560
+	{0x0F12, 0x0780},	//#REG_TC_PZOOM_PrevZoomReqInputHeight		//ISP	Input Height	1920
 	{0x0F12, 0x0000},	//#REG_TC_PZOOM_PrevZoomReqInputWidthOfs	//ISP	Input HOffset	0
 	{0x0F12, 0x0000},	//#REG_TC_PZOOM_PrevZoomReqInputHeightOfs	//ISP	Input VOffset	0
-	{0x0F12, 0x0A00},	//#REG_TC_PZOOM_CapZoomReqInputWidth			//ISP	Input Width 2560
-	{0x0F12, 0x05A0},	//#REG_TC_PZOOM_CapZoomReqInputHeight			//ISP	Input Height	1536
+	{0x0F12, 0x0A00},	//#REG_TC_PZOOM_CapZoomReqInputWidth		//ISP	Input Width 2560
+	{0x0F12, 0x0780},	//#REG_TC_PZOOM_CapZoomReqInputHeight		//ISP	Input Height	1920
 	{0x0F12, 0x0000},	//#REG_TC_PZOOM_CapZoomReqInputWidthOfs 	//ISP	Input HOffset	0
 	{0x0F12, 0x0000},	//#REG_TC_PZOOM_CapZoomReqInputHeightOfs	//ISP	Input VOffset	0
 
@@ -5412,9 +6036,6 @@ LOCAL SENSOR_REG_T s5k4ec_1280X720[] = {
 	{0x0F12, 0x0001},	//	#REG_TC_GP_PrevConfigChanged	//
 	{0x002A, 0x0270},
 	{0x0F12, 0x0001},	//	#REG_TC_GP_CapConfigChanged 	//
-	{0x002A, 0x023E},
-	{0x0F12, 0x0001},	//	#REG_TC_GP_EnablePreview		//
-	{0x0F12, 0x0001},	//	#REG_TC_GP_EnablePreviewChanged //
 };
 
 // 1280X960 YUV Preview/Capture Mode
@@ -5449,12 +6070,12 @@ LOCAL SENSOR_REG_T s5k4ec_1280X960[] = {
 
 	{0x002A, 0x0494},
 	{0x0F12, 0x0A00},	//REG_TC_PZOOM_PrevZoomReqInputWidth //ISP  Input Width 2560
-	{0x0F12, 0x0780},	//REG_TC_PZOOM_PrevZoomReqInputHeight //ISP  Input Height 1920
+	{0x0F12, 0x0780},	//REG_TC_PZOOM_PrevZoomReqInputHeight //ISP  Input Height 1960
 	{0x0F12, 0x0000},	//REG_TC_PZOOM_PrevZoomReqInputWidthOfs //ISP  Input HOffset 0
 	{0x0F12, 0x0000},	//REG_TC_PZOOM_PrevZoomReqInputHeightOfs //ISP  Input VOffset 0
 
 	{0x0F12, 0x0A00},	//REG_TC_PZOOM_CapZoomReqInputWidth ISP  Input Width 2560
-	{0x0F12, 0x0600},	//REG_TC_PZOOM_CapZoomReqInputHeight //ISP  Input Height 1920
+	{0x0F12, 0x0780},	//REG_TC_PZOOM_CapZoomReqInputHeight //ISP  Input Height 1920
 	{0x0F12, 0x0000},	//REG_TC_PZOOM_CapZoomReqInputWidthOfs //ISP  Input HOffset 0
 	{0x0F12, 0x0000},	//REG_TC_PZOOM_CapZoomReqInputHeightOfs //ISP  Input VOffset 0
 
@@ -5472,9 +6093,6 @@ LOCAL SENSOR_REG_T s5k4ec_1280X960[] = {
 	{0x0F12, 0x0001},	//	#REG_TC_GP_PrevConfigChanged	//
 	{0x002A, 0x0270},
 	{0x0F12, 0x0001},	//	#REG_TC_GP_CapConfigChanged 	//
-	{0x002A, 0x023E},
-	{0x0F12, 0x0001},	//	#REG_TC_GP_EnablePreview		//
-	{0x0F12, 0x0001},	//	#REG_TC_GP_EnablePreviewChanged //
 };
 
 //1600X1200  YUV Mode (Capture Only)
@@ -5486,8 +6104,8 @@ LOCAL SENSOR_REG_T s5k4ec_1600X1200[] = {
 	{0x002A, 0x18AC},
 	{0x0F12, 0x0060},	//senHal_uAddColsBin
 	{0x0F12, 0x0060},	//senHal_uAddColsNoBin
-	{0x0F12, 0x05C0},	//senHal_uMinColsBin
-	{0x0F12, 0x05C0},	//senHal_uMinColsNoBin
+	{0x0F12, 0x06C8},	//senHal_uMinColsBin
+	{0x0F12, 0x06C8},	//senHal_uMinColsNoBin
 
 	{0x002A, 0x0258},
 	{0x0F12, 0x0A00}, 	  /*REG_TC_GP_CapReqInputWidth 2560 */
@@ -5527,8 +6145,8 @@ LOCAL SENSOR_REG_T s5k4ec_2048X1536[] = {
 	{0x002A, 0x18AC},
 	{0x0F12, 0x0060},	//senHal_uAddColsBin
 	{0x0F12, 0x0060},	//senHal_uAddColsNoBin
-	{0x0F12, 0x05C0},	//senHal_uMinColsBin
-	{0x0F12, 0x05C0},	//senHal_uMinColsNoBin
+	{0x0F12, 0x06C8},	//senHal_uMinColsBin
+	{0x0F12, 0x06C8},	//senHal_uMinColsNoBin
 
 	{0x002A, 0x0258},
 	{0x0F12, 0x0A00}, 	  /*REG_TC_GP_CapReqInputWidth 2560 */
@@ -5568,37 +6186,37 @@ LOCAL SENSOR_REG_T s5k4ec_2560X1920[] = {
 	{0x002A, 0x18AC},
 	{0x0F12, 0x0060},	//senHal_uAddColsBin
 	{0x0F12, 0x0060},	//senHal_uAddColsNoBin
-	{0x0F12, 0x05C0},	//senHal_uMinColsBin
-	{0x0F12, 0x05C0},	//senHal_uMinColsNoBin
+	{0x0F12, 0x06C8},	//senHal_uMinColsBin
+	{0x0F12, 0x06C8},	//senHal_uMinColsNoBin
 
 	{0x002A, 0x0258},
-	{0x0F12, 0x0A00},		/*REG_TC_GP_CapReqInputWidth 2560 */
-	{0x0F12, 0x0780},		/*REG_TC_GP_CapReqInputHeight 1920 */
-	{0x0F12, 0x0010},		/*REG_TC_GP_CapInputWidthOfs (2592-2560)/2 */
-	{0x0F12, 0x000C},		/*REG_TC_GP_CapInputHeightOfs (1944-1920)/2 */
+	{0x0F12, 0x0A00},	/*REG_TC_GP_CapReqInputWidth 2560 */
+	{0x0F12, 0x0780},	/*REG_TC_GP_CapReqInputHeight 1920 */
+	{0x0F12, 0x0010},	/*REG_TC_GP_CapInputWidthOfs (2592-2560)/2 */
+	{0x0F12, 0x000C},	/*REG_TC_GP_CapInputHeightOfs (1944-1920)/2 */
 
 	{0x002A, 0x0264},
-	{0x0F12, 0x0001},		/*REG_TC_GP_bUseReqInputInCap */
+	{0x0F12, 0x0001},	/*REG_TC_GP_bUseReqInputInCap */
 
 	{0x002A, 0x049C},
-	{0x0F12, 0x0A00},		/*REG_TC_PZOOM_CapZoomReqInputWidth 2560 */
-	{0x0F12, 0x0780},		/*REG_TC_PZOOM_CapZoomReqInputHeight 1920 */
-	{0x0F12, 0x0000},		/*REG_TC_PZOOM_CapZoomReqInputWidthOfs */
-	{0x0F12, 0x0000},		/*REG_TC_PZOOM_CapZoomReqInputHeightOfs */
+	{0x0F12, 0x0A00},	/*REG_TC_PZOOM_CapZoomReqInputWidth 2560 */
+	{0x0F12, 0x0780},	/*REG_TC_PZOOM_CapZoomReqInputHeight 1920 */
+	{0x0F12, 0x0000},	/*REG_TC_PZOOM_CapZoomReqInputWidthOfs */
+	{0x0F12, 0x0000},	/*REG_TC_PZOOM_CapZoomReqInputHeightOfs */
 
 	{0x002A, 0x047C},
-	{0x0F12, 0x0001},		/*REG_TC_THUMB_Thumb_bActive */
-	{0x0F12, 0x0280},		/*REG_TC_THUMB_Thumb_uWidth 640 */
-	{0x0F12, 0x01E0},		/*REG_TC_THUMB_Thumb_uHeight 480 */
+	{0x0F12, 0x0001},	/*REG_TC_THUMB_Thumb_bActive */
+	{0x0F12, 0x0280},	/*REG_TC_THUMB_Thumb_uWidth 640 */
+	{0x0F12, 0x01E0},	/*REG_TC_THUMB_Thumb_uHeight 480 */
 
 	{0x002A, 0x0398},
-	{0x0F12, 0x0A00},		/*REG_0TC_CCFG_usWidth 2560 */
-	{0x0F12, 0x0780},		/*REG_0TC_CCFG_usHeight 1920 */
+	{0x0F12, 0x0A00},	/*REG_0TC_CCFG_usWidth 2560 */
+	{0x0F12, 0x0780},	/*REG_0TC_CCFG_usHeight 1920 */
 
 	{0x002A, 0x024E},
-	{0x0F12, 0x0001},		/*REG_TC_GP_NewConfigSync */
+	{0x0F12, 0x0001},	/*REG_TC_GP_NewConfigSync */
 	{0x002A, 0x0270},
-	{0x0F12, 0x0001},		/*REG_TC_GP_CapConfigChanged */
+	{0x0F12, 0x0001},	/*REG_TC_GP_CapConfigChanged */
 };
 
 //==========================================================
@@ -5655,7 +6273,6 @@ LOCAL SENSOR_REG_T s5k4ec_FAST_AE_Off[] = {
 };
 
 // Settings that should enhance HD-resolution recording (1280x720 and above)
-// TODO: This results to an image that is overexposed, tweak this later
 LOCAL SENSOR_REG_T s5k4ec_enable_camcorder[] =  {
 	{0xFCFC, 0xD000},
 	{0x0028, 0xD000},
@@ -5667,10 +6284,6 @@ LOCAL SENSOR_REG_T s5k4ec_enable_camcorder[] =  {
 	{0x0F12, 0x3E01},	//adlc_fadlc_filter_co
 
 	{0x0028, 0x7000},
-
-	// AE TARGET
-	{0x002A, 0x1484},
-	{0x0F12, 0x0026},	//003C	 //TVAR_ae_BrAve p //
 
 	// SLOW AE
 	{0x002A, 0x1568},
@@ -6917,5 +7530,5 @@ LOCAL SENSOR_REG_T s5k4ec_disable_camcorder[] = {
 	{0x0F12, 0x0001},	//	#REG_TC_GP_PrevConfigChanged	//
 	{0x002A, 0x0270},
 	{0x0F12, 0x0001},	//	#REG_TC_GP_CapConfigChanged 	//
-        {0xFFFF, 0xFFFF},
+	{0xFFFF, 0xFFFF},
 };

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 The Android Open Source Project
+ * Copyright (C) 2020 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,11 +14,37 @@
  * limitations under the License.
  */
 
+#ifdef CONFIG_CAMERA_KANAS
+/*
+ * Workaround: Increase DDR frequency when using the 720p preview modes
+ * SPRD's devfreq ondemand governor is not fast or sensitive enough to
+ * raise the frequency when a load spike occurs.
+ * This spike will either cause an overflow, due to the slower processing
+ * on a recent burst of frames or an undefined behavior in the sensor.
+ */
+#define WA_BOOST_DDR_FREQ_720P
+
+/*
+ * Workaround: Limit Frame rate to 24 fps
+ * kanas3g can't seem to reach 30fps and only reaches about 26-27 fps.
+ * Since the DCAM line1 tx_error due to overflow is still present
+ * (WA_BOOST_DDR_FREQ_720P cannot fully prevent it from happening, sorry),
+ * Try to limit the maximum to some arbritrary framerate to save
+ * some processing power and help further prevent the said overflow.
+ */
+#define WA_LIMIT_HD_CAM_24FPS
+#endif
+
 #include <utils/Log.h>
+#include <errno.h>
 #include "sensor.h"
 #include "jpeg_exif_header.h"
 #include "sensor_drv_u.h"
 #include "cmr_oem.h"
+
+#ifdef WA_BOOST_DDR_FREQ_720P
+#include <stdio.h>
+#endif
 
 #include "sensor_s5k4ecgx_regs_mipi.h"
 
@@ -50,23 +76,58 @@ LOCAL uint32_t is_cap = 0;
 LOCAL uint16_t s_current_shutter = 0;
 LOCAL uint16_t s_current_gain = 0;
 
-LOCAL uint16_t s_fps_cur_max = -1; // current max FPS (abs max is 30)
+
+// Global copy of states
+LOCAL uint8_t s_contrast_lvl = 3;
+LOCAL uint8_t s_sharpness_lvl = 3;
+LOCAL uint8_t s_saturation_lvl = 3;
+LOCAL uint8_t s_image_effect = 0;
+LOCAL uint8_t s_ISO_mode = 0;
+LOCAL uint8_t s_anti_flicker_mode = 0; //50Hz
+LOCAL uint8_t s_ev_comp_lvl = 3;
+
+LOCAL int16_t s_fps_cur_mode = -1; // current max FPS (abs max is 30)
+LOCAL int16_t s_target_max_fps = -1; // target max FPS
 LOCAL uint16_t s_current_env = 0; // 0 - Norm, 1 - Low Light, 2 - Night
-LOCAL uint16_t s_current_ev = 0;
 LOCAL uint16_t s_cur_scene = 0;
-LOCAL uint32_t s_flash_mode_en = 0;
 LOCAL uint32_t s_preview_mode = 0;
 LOCAL uint32_t s_white_balance = 0;
 
+// Local copy of Flash state (copied from the global context)
+LOCAL uint8_t s_flash_state = 0; // flash state in the global context
+LOCAL uint32_t s_torch_mode_en = 0;
+
+LOCAL uint8_t s_fast_ae_en = 0;
+LOCAL uint8_t s_stream_is_on = 0;
+
 // Local copy of state used by the HD camcorder settings
-LOCAL uint32_t s_brightness = 3; // Default value
-LOCAL uint32_t s_metering_mode = 0;
+LOCAL uint32_t s_brightness_lvl = 3; // Default value
+LOCAL uint32_t s_metering_mode = CAMERA_AE_CENTER_WEIGHTED;
 LOCAL  uint8_t s_hd_applied = 0;
 
 // Local AF states
 LOCAL uint16_t s_focus_mode = 0;
 LOCAL  uint8_t s_using_low_light_af = 0;
 LOCAL  uint8_t s_af_wnd_has_changed = 0;
+
+// FPS modes
+enum {
+	FPS_MODE_AUTO = 0,
+	FPS_MODE_7,
+	FPS_MODE_10,
+	FPS_MODE_12,
+	FPS_MODE_15,
+	FPS_MODE_24,
+	FPS_MODE_25,
+	FPS_MODE_30,
+	FPS_MODE_MANUAL = 64,
+	FPS_MODE_OVERRIDE = 65,  // FPS setting is disabled
+	FPS_MODE_INVALID  = ((uint16_t) -1) >> 1,
+};
+
+#ifdef WA_BOOST_DDR_FREQ_720P
+LOCAL   int8_t s_ddr_boosted = 0;
+#endif
 
 LOCAL uint32_t _s5k4ec_InitExifInfo(void);
 LOCAL uint32_t _s5k4ec_GetResolutionTrimTab(uint32_t param);
@@ -88,8 +149,8 @@ LOCAL uint32_t _s5k4ec_after_snapshot(uint32_t param);
 LOCAL uint32_t _s5k4ec_GetExifInfo(uint32_t param);
 LOCAL uint32_t _s5k4ec_ExtFunc(uint32_t ctl_param);
 LOCAL uint32_t _s5k4ec_StreamOn(uint32_t param);
+LOCAL uint32_t _s5k4ec_StreamOff(uint32_t param);
 LOCAL uint32_t _s5k4ec_set_iso(uint32_t level);
-LOCAL uint32_t _s5k4ec_recovery_init();
 
 // Additional functions
 LOCAL uint32_t s5k4ec_I2C_write(SENSOR_REG_T* sensor_reg_ptr);
@@ -104,6 +165,9 @@ LOCAL uint32_t __s5k4ecgx_set_focus_mode(uint32_t mode); // Force-set
 LOCAL uint32_t _s5k4ecgx_reset_focus_touch_position();
 LOCAL uint16_t s5k4ecgx_get_frame_time();
 LOCAL uint32_t s5k4ec_wait_until_ae_stable();
+LOCAL uint32_t s5k4ec_set_ae_awb_enable(uint32_t enable);
+LOCAL uint32_t s5k4ec_set_ae_enable(uint32_t enable);
+LOCAL uint32_t s5k4ec_set_awb_enable(uint32_t enable);
 
 LOCAL uint32_t s5k4ecgx_fast_ae(uint32_t on);
 LOCAL uint32_t s5k4ec_preflash_af(uint32_t on);
@@ -111,6 +175,12 @@ LOCAL uint32_t s5k4ec_main_flash(uint32_t on);
 LOCAL uint32_t s5k4ec_low_light_AF_check();
 LOCAL uint32_t s5k4ec_set_FPS(uint32_t fps);
 LOCAL uint32_t s5k4ec_set_FPS_mode(uint32_t fps_mode);
+LOCAL uint32_t s5k4ec_set_manual_FPS(uint32_t min, uint32_t max);
+LOCAL void s5k4ec_set_REG_TC_DBG_AutoAlgEnBits(int bit, int set);
+
+#ifdef WA_BOOST_DDR_FREQ_720P
+LOCAL int8_t s5k4ec_ddr_is_slow(int8_t boost);
+#endif
 
 LOCAL EXIF_SPEC_PIC_TAKING_COND_T s_s5k4ec_exif;
 
@@ -121,7 +191,7 @@ LOCAL SENSOR_REG_TAB_INFO_T s_s5k4ec_resolution_Tab_YUV[] = {
 	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_320X240), 320, 240, 24, SENSOR_IMAGE_FORMAT_YUV422},
 	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_640X480), 640, 480, 24, SENSOR_IMAGE_FORMAT_YUV422},
 	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_720X540), 720, 540, 24, SENSOR_IMAGE_FORMAT_YUV422},
-	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_1280X720), 1280, 720, 24, SENSOR_IMAGE_FORMAT_YUV422},
+	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_1024X768), 1024, 768, 24, SENSOR_IMAGE_FORMAT_YUV422},
 
 	//YUV422 PREVIEW 2
 	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_1280X960), 1280, 960, 24, SENSOR_IMAGE_FORMAT_YUV422},
@@ -134,7 +204,7 @@ LOCAL SENSOR_REG_TAB_INFO_T s_s5k4ec_resolution_Tab_YUV[] = {
 
 LOCAL uint32_t s5k4ec_set_awb_enable(uint32_t enable)
 {
-	uint16_t unlock = 1;
+	uint16_t unlock;
 
 	if (enable == 1) {
 		SENSOR_PRINT_HIGH("Unlock AWB");
@@ -149,7 +219,7 @@ LOCAL uint32_t s5k4ec_set_awb_enable(uint32_t enable)
 
 	Sensor_WriteReg(0xFCFC, 0xD000);
 	Sensor_WriteReg(0x0028, 0x7000);
-	Sensor_WriteReg(0x002A, 0x2c66);
+	Sensor_WriteReg(0x002A, 0x2C66);
 	Sensor_WriteReg(0x0F12, unlock);
 
 	return 0;
@@ -157,7 +227,7 @@ LOCAL uint32_t s5k4ec_set_awb_enable(uint32_t enable)
 
 LOCAL uint32_t s5k4ec_set_ae_enable(uint32_t enable)
 {
-	uint16_t unlock = 1;
+	uint16_t unlock;
 
 	if (enable == 1) {
 		SENSOR_PRINT_HIGH("Unlock AE");
@@ -175,8 +245,13 @@ LOCAL uint32_t s5k4ec_set_ae_enable(uint32_t enable)
 	Sensor_WriteReg(0x002A, 0x2C5E);
 	Sensor_WriteReg(0x0F12, unlock);
 
-	s5k4ec_set_awb_enable(enable);
+	return 0;
+}
 
+LOCAL uint32_t s5k4ec_set_ae_awb_enable(uint32_t enable)
+{
+	s5k4ec_set_ae_enable(enable);
+	s5k4ec_set_awb_enable(enable);
 	return 0;
 }
 
@@ -189,7 +264,7 @@ LOCAL SENSOR_TRIM_T s_s5k4ec_Resolution_Trim_Tab[]=
 	{0, 0, 320, 240, 680, 648, 40, {0, 0, 320, 240}},
 	{0, 0, 640, 480, 680, 648, 40, {0, 0, 640, 480}},
 	{0, 0, 720, 540, 680, 648, 40, {0, 0, 720, 540}},
-	{0, 0, 1280, 720, 664, 648, 0, {0, 0, 1280, 720}},
+	{0, 0, 1024, 768, 664, 648, 0, {0, 0, 1024, 768}},
 
 	//YUV422 PREVIEW 2
 	{0, 0, 1280, 960, 664, 648, 0, {0, 0, 1280, 960}},
@@ -197,7 +272,6 @@ LOCAL SENSOR_TRIM_T s_s5k4ec_Resolution_Trim_Tab[]=
 	{0, 0, 2048, 1536, 660, 648, 0, {0, 0, 2048, 1536}},
 	{0, 0, 2560, 1920, 660, 648, 0, {0, 0, 2560, 1920}},
 
-	{0, 0, 0, 0, 0, 0, 0, {0, 0, 0, 0}},
 	{0, 0, 0, 0, 0, 0, 0, {0, 0, 0, 0}}
 };
 
@@ -214,7 +288,7 @@ LOCAL SENSOR_IOCTL_FUNC_TAB_T s_s5k4ec_ioctl_func_tab =
 	_s5k4ec_GetResolutionTrimTab,//PNULL,/*7*/
 
 	// External
-	s5k4ec_set_ae_enable,/*8*/
+	s5k4ec_set_ae_awb_enable,/*8*/
 	PNULL,/*9*/
 	PNULL,/*10*/
 	_s5k4ec_set_brightness,/*11*/
@@ -249,7 +323,7 @@ LOCAL SENSOR_IOCTL_FUNC_TAB_T s_s5k4ec_ioctl_func_tab =
 	s5k4ec_set_Metering,/*40*///set_meter_mode
 	PNULL, /*41*///get_status
 	_s5k4ec_StreamOn,/*42*///stream_on
-	PNULL,//_s5k4ec_StreamOff/*43*/// stream_off
+	_s5k4ec_StreamOff,//_s5k4ec_StreamOff/*43*/// stream_off
 	NULL,
 };
 
@@ -328,11 +402,23 @@ SENSOR_INFO_T g_s5k4ec_mipi_yuv_info =
 	1,                     // skip frame num while change setting
 };
 
+LOCAL int32_t _gcd(int32_t a, int32_t b)
+{
+	for (int32_t r; b > 0; ) {
+		r = a % b;
+		a = b;
+		b = r;
+	}
+
+	return a;
+}
+
 LOCAL uint32_t _s5k4ec_GetExifInfo(__attribute__((unused)) uint32_t param)
 {
 	EXIF_SPEC_PIC_TAKING_COND_T* exif_ptr=&s_s5k4ec_exif;
 	uint32_t shutter_speed;
 	uint16_t iso_value;
+	int32_t gcd_shutter;
 
 	iso_value = s5k4ec_get_ISO_rate();
 
@@ -348,8 +434,10 @@ LOCAL uint32_t _s5k4ec_GetExifInfo(__attribute__((unused)) uint32_t param)
 		exif_ptr->valid.ExposureTime = 0;
 	} else {
 		exif_ptr->valid.ExposureTime = 1;
-		exif_ptr->ExposureTime.numerator = 1;
-		exif_ptr->ExposureTime.denominator = shutter_speed;
+
+		gcd_shutter = _gcd(shutter_speed, 400000);
+		exif_ptr->ExposureTime.numerator = shutter_speed / gcd_shutter;
+		exif_ptr->ExposureTime.denominator = 400000 / gcd_shutter;
 	}
 
 	return (unsigned long)exif_ptr;
@@ -437,18 +525,8 @@ LOCAL uint32_t _s5k4ec_GetResolutionTrimTab(__attribute__((unused)) uint32_t par
 	return (unsigned long)s_s5k4ec_Resolution_Trim_Tab;
 }
 
-LOCAL uint32_t _s5k4ec_PowerOn(uint32_t power_on)
+LOCAL uint32_t __s5k4ec_PowerOn(uint32_t power_on)
 {
-#ifndef CONFIG_CAMERA_IOCTL_IOCTL_HAS_POWER_ONOFF
-	/*
-	 * Some devices have a convenience IOCTL SENSOR_IO_POWER_ONOFF that
-	 * will handle the process of turning this on and off.
-	 * The CONFIG_CAMERA_IOCTL_IOCTL_HAS_POWER_ONOFF when set will
-	 * attempt to call that only after the poweron function has
-	 * been called.
-	 * If that IOCTL is present, it is advisable to use that instead
-	 * of this.
-	 */
 	SENSOR_AVDD_VAL_E dvdd_val = g_s5k4ec_mipi_yuv_info.dvdd_val;
 	SENSOR_AVDD_VAL_E avdd_val = g_s5k4ec_mipi_yuv_info.avdd_val;
 	SENSOR_AVDD_VAL_E iovdd_val = g_s5k4ec_mipi_yuv_info.iovdd_val;
@@ -494,7 +572,35 @@ LOCAL uint32_t _s5k4ec_PowerOn(uint32_t power_on)
 		Sensor_SetMonitorVoltage(SENSOR_AVDD_CLOSED);
 		SENSOR_Sleep(10);
 	}
+	return 0;
+}
+
+LOCAL uint32_t _s5k4ec_PowerOn(uint32_t power_on)
+{
+#ifndef CONFIG_CAMERA_IOCTL_IOCTL_HAS_POWER_ONOFF
+	/*
+	 * Some devices offer a convenience IOCTL, SENSOR_IO_POWER_ONOFF, that
+	 * will handle the process of turning this on and off.
+	 * The CONFIG_CAMERA_IOCTL_IOCTL_HAS_POWER_ONOFF when set will
+	 * attempt to call that only after the poweron function has
+	 * been called.
+	 * If that IOCTL is present, it is advisable to use that instead
+	 * of this.
+	 */
+	__s5k4ec_PowerOn(power_on);
 #endif
+
+#ifdef WA_BOOST_DDR_FREQ_720P
+	if (s_ddr_boosted) {
+		s5k4ec_ddr_is_slow(0);
+	}
+#endif
+
+	if (s_torch_mode_en) {
+		s_torch_mode_en = 0;
+		Sensor_SetFlash(FLASH_CLOSE);
+	}
+
 	SENSOR_PRINT_HIGH("(1:on, 0:off): %u", power_on);
 
 	return SENSOR_SUCCESS;
@@ -540,7 +646,11 @@ LOCAL uint32_t _s5k4ec_Identify(__attribute__((unused)) uint32_t param)
 
 			if (i != max_attmp) {
 				SENSOR_PRINT_HIGH("Retrying after 100 msec");
+
+				// Power cycle
+				__s5k4ec_PowerOn(0);
 				SENSOR_Sleep(100);
+				__s5k4ec_PowerOn(1);
 			} else {
 				SENSOR_PRINT_HIGH("Bailing out");
 			}
@@ -553,23 +663,41 @@ LOCAL uint32_t _s5k4ec_Identify(__attribute__((unused)) uint32_t param)
 		//_s5k4ec_set_vendorid();
 
 		/*
-		 * Initialize our local states, again.
-		 * Just to be sure. Setting it again will not hurt
-		 * But not setting it at all will.
+		 * Reinitialize all the local state variables
+		 * Expecially if we are recovering from a sudden crash
 		 */
-		s_fps_cur_max = -1; // current max FPS (abs max is 30)
+		s_contrast_lvl = 3;
+		s_sharpness_lvl = 3;
+		s_saturation_lvl = 3;
+		s_image_effect = 0;
+		s_ISO_mode = 0;
+		s_anti_flicker_mode = 0;
+		s_ev_comp_lvl = 3;
+
+		s_fps_cur_mode = -1;
+		s_target_max_fps = -1;
 		s_current_env = 0; // 0 - Norm, 1 - Low Light, 2 - Night
-		s_current_ev = 0;
 		s_cur_scene = 0;
-		s_flash_mode_en = 0;
 		s_preview_mode = 0;
 		s_white_balance = 0;
-		s_brightness = 3; // Default value
+
+		// Local copy of Flash state (copied from the global context)
+		s_flash_state = 0; // flash state in the global context
+		s_torch_mode_en = 0;
+
+		// Local copy of state used by the HD camcorder settings
+		s_brightness_lvl = 3; // Default value
+		s_metering_mode = CAMERA_AE_CENTER_WEIGHTED;
 		s_hd_applied = 0;
-		s_metering_mode = 0;
+
+		// Local AF states
 		s_focus_mode = 0;
 		s_using_low_light_af = 0;
 		s_af_wnd_has_changed = 0;
+
+		// Misc
+		s_fast_ae_en = 0;
+		s_stream_is_on = 0;
 	}
 
 	return ret_value;
@@ -577,278 +705,366 @@ LOCAL uint32_t _s5k4ec_Identify(__attribute__((unused)) uint32_t param)
 
 LOCAL uint32_t _s5k4ec_set_brightness(uint32_t level)
 {
-	if (level > 7) {
+	if (level > 6) {
 		SENSOR_PRINT_ERR("Undefined Brightness level %u", level);
-		return 0;
+		return SENSOR_OP_PARAM_ERR;
 	}
+
 	SENSOR_PRINT_HIGH("Apply Brightness level %u", level);
 
-	s5k4ec_I2C_write(s5k4ec_brightness_tab[level]);
-	s_brightness = level;
+	s5k4ec_I2C_write(s5k4ec_ae_brightness_tab[level]);
+	s_brightness_lvl = level;
 	Sensor_SetSensorExifInfo(SENSOR_EXIF_CTRL_BRIGHTNESSVALUE, (uint32_t) level);
 
-	return 0;
+	return SENSOR_SUCCESS;
 }
 
 LOCAL uint32_t _s5k4ec_set_contrast(uint32_t level)
 {
-	if (level > 7) {
+	if (level > 6) {
 		SENSOR_PRINT_ERR("Undefined Contrast level %u", level);
-		return 0;
+		return SENSOR_OP_PARAM_ERR;
 	}
 
 	SENSOR_PRINT_HIGH("Apply Contrast level %u", level);
 
 	s5k4ec_I2C_write(s5k4ec_contrast_tab[level]);
+	s_contrast_lvl = level;
 	Sensor_SetSensorExifInfo(SENSOR_EXIF_CTRL_CONTRAST, (uint32_t) level);
 
-	return 0;
+	return SENSOR_SUCCESS;
 }
 
 LOCAL uint32_t _s5k4ec_set_iso(uint32_t level)
 {
-	if (CAMERA_ISO_MAX < level) {
+	if (CAMERA_ISO_MAX <= level) {
 		SENSOR_PRINT_ERR("Undefined ISO mode %u", level);
-		return 0;
+		return SENSOR_OP_PARAM_ERR;
 	}
 
 	SENSOR_PRINT_HIGH("Apply ISO mode %u", level);
 
 	switch(level) {
-		case CAMERA_ISO_50:
-			s5k4ec_I2C_write(s5k4ec_ISO_50);
-			break;
-		case CAMERA_ISO_100:
-			s5k4ec_I2C_write(s5k4ec_ISO_100);
-			break;
-		case CAMERA_ISO_200:
-			s5k4ec_I2C_write(s5k4ec_ISO_200);
-			break;
-		case CAMERA_ISO_300: /* This value is linearly interpolated */
-			s5k4ec_I2C_write(s5k4ec_ISO_300);
-			break;
-		/*
-		 * Maximum iso gain is about 5232 which is about
-		 * 400 ISO as it seems with the msm implementation
-		 * and the stock rom. AUTO ISO might never
-		 * reach this level, but would still appear
-		 * on the Exif data as 400 ISO though.
-		 */
-		case CAMERA_ISO_400:
-		case CAMERA_ISO_800:
-		case CAMERA_ISO_1600:
-			s5k4ec_I2C_write(s5k4ec_ISO_400);
-			break;
+	case CAMERA_ISO_50:
+		s5k4ec_I2C_write(s5k4ec_ISO_50);
+		break;
+	case CAMERA_ISO_100:
+		s5k4ec_I2C_write(s5k4ec_ISO_100);
+		break;
+	case CAMERA_ISO_200:
+		s5k4ec_I2C_write(s5k4ec_ISO_200);
+		break;
+	case CAMERA_ISO_300: /* This value is linearly interpolated */
+		s5k4ec_I2C_write(s5k4ec_ISO_300);
+		break;
+	case CAMERA_ISO_400:
+		s5k4ec_I2C_write(s5k4ec_ISO_400);
+		break;
+	/*
+	 * These values are experimental
+	 * To be frank, the factory settings only allow auto ISO
+	 * go up to around ISO400, with or without Digital Gain.
+	 * It's possible to use Higher ISO settings but doing so
+	 * will cause much increase in noise with some unexplored
+	 * side effects.
+	 */
+	case CAMERA_ISO_600:
+		s5k4ec_I2C_write(s5k4ec_ISO_600);
+		break;
+	case CAMERA_ISO_800:
+	case CAMERA_ISO_1600:
+		s5k4ec_I2C_write(s5k4ec_ISO_800);
+		break;
 
-		/*
-		 * If ever the check passed but with an unknown value
-		 * default to auto.
-		 */
-		default:
-		case CAMERA_ISO_AUTO:
-			s5k4ec_I2C_write(s5k4ec_ISO_auto);
-			break;
-
+	/*
+	 * If ever the check passed but with an unknown value
+	 * default to auto.
+	 */
+	default:
+	case CAMERA_ISO_AUTO:
+		s5k4ec_I2C_write(s5k4ec_ISO_auto);
+		break;
 	}
 
-        return 0;
+	s_ISO_mode = level;
+
+	return SENSOR_SUCCESS;
 }
 
 LOCAL uint32_t _s5k4ec_set_saturation(uint32_t level)
 {
 	if (level > 6) {
 		SENSOR_PRINT_ERR("Undefined Saturation level %u", level);
-		return 0;
+		return SENSOR_OP_PARAM_ERR;
 	}
 
 	SENSOR_PRINT_HIGH("Apply Saturation level %u",level);
 	s5k4ec_I2C_write(s5k4ec_saturation_tab[level]);
+	s_saturation_lvl = level;
 
-	return 0;
+	return SENSOR_SUCCESS;
 }
 
 LOCAL uint32_t _s5k4ec_set_image_effect(uint32_t effect_type)
 {
-	static uint8_t should_revert_WB = 0;
-	if (effect_type > 8) {
-		SENSOR_PRINT_ERR("Undefined Image Effect type %u", effect_type);
-		return 0;
+	if (effect_type > 9) {
+		SENSOR_PRINT_ERR("Undefined Image Effect #%u", effect_type);
+		return SENSOR_OP_PARAM_ERR;
 	}
 
 	SENSOR_PRINT_HIGH("Apply Image Effect type %u", effect_type);
 	s5k4ec_I2C_write(s5k4ec_image_effect_tab[effect_type]);
+	s_image_effect = (int8_t) effect_type;
 
-	/*
-	 * Work around to image effects affecting the whitebalance.
-	 * Switching to None should also revert the alteration to WB.
-	 */
-	if (effect_type >= 2 && effect_type <= 4) {
-		should_revert_WB = 1;
-	} else if (should_revert_WB) {
-		SENSOR_PRINT_HIGH("Reverting White Balance from effects.");
-		_s5k4ec_set_awb(s_white_balance);
-		should_revert_WB = 0;
-	}
-
-	return 0;
+	return SENSOR_SUCCESS;
 }
 
 LOCAL uint32_t _s5k4ec_set_ev(uint32_t level)
 {
+	const uint16_t hd_mode_offset = 0x8;
 	if (level > 6) {
 		SENSOR_PRINT_ERR("Undefined Exposure Compensation level %u", level);
-		return 0;
+		return SENSOR_OP_PARAM_ERR;
 	}
 
 	SENSOR_PRINT_HIGH("Apply Exposure Compensation level %u", level);
-	s_current_ev = level;
-	s5k4ec_I2C_write(s5k4ec_ev_tab[level]);
 
-	return 0;
+	if (s_hd_applied) {
+		SENSOR_PRINT_HIGH("HD settings detected, apply offset -%u", hd_mode_offset);
+		Sensor_WriteReg(0x0028, 0x7000);
+		Sensor_WriteReg(0x002A, 0x023A); // REG_TC_UserExposureVal88
+		SENSOR_PRINT_HIGH("Apply %u", s5k4ec_ev_tab[level][2].reg_value - hd_mode_offset);
+		Sensor_WriteReg(0x0F12, s5k4ec_ev_tab[level][2].reg_value - hd_mode_offset);
+	} else {
+		s5k4ec_I2C_write(s5k4ec_ev_tab[level]);
+	}
+
+	s_ev_comp_lvl = (int8_t) level;
+
+	return SENSOR_SUCCESS;
 }
 
 LOCAL uint32_t _s5k4ec_set_anti_flicker(uint32_t mode)
 {
-	if (mode > 6) {
+	const char *str = "";
+	if (mode >= CAMERA_MAX_ANTIBANDING) {
 		SENSOR_PRINT_ERR("Undefined Anti-banding mode %u", mode);
-		return 0;
+		return SENSOR_OP_PARAM_ERR;
 	}
 
-	SENSOR_PRINT_HIGH("Applied %s Anti-banding", mode ? "50Hz" : "60Hz");
-	s5k4ec_I2C_write(s5k4ec_anti_banding_flicker_tab[mode]);
+	if (mode == CAMERA_ANTIBANDING_50HZ) {
+		str = "Applying 50Hz";
+	} else if (mode == CAMERA_ANTIBANDING_60HZ) {
+		str = "Applying 60Hz";
+	} else if (mode == CAMERA_ANTIBANDING_OFF) {
+		str = "Disabling ";
+	} else if (mode == CAMERA_ANTIBANDING_AUTO) {
+		str = "Applying Auto";
+	}
 
-	return 0;
+	SENSOR_PRINT_HIGH("%s Anti-banding", str);
+
+	// Deactivate auto anti flicker algorithm when
+	if (mode == CAMERA_ANTIBANDING_AUTO)
+		s5k4ec_set_REG_TC_DBG_AutoAlgEnBits(AA_FLICKER, 1);
+	else
+		s5k4ec_set_REG_TC_DBG_AutoAlgEnBits(AA_FLICKER, 0);
+
+	s5k4ec_I2C_write(s5k4ec_anti_banding_flicker_tab[mode]);
+	s_anti_flicker_mode = (int8_t) mode;
+
+	return SENSOR_SUCCESS;
 }
 
 LOCAL uint32_t _s5k4ec_set_video_mode(uint32_t mode)
 {
 	struct camera_context *cxt = camera_get_cxt();
+	s_target_max_fps = cxt->cmr_set.frame_rate;
 
 	SENSOR_PRINT_HIGH("mode = 0x%X", mode);
 
 	SENSOR_PRINT_HIGH("cxt->sn_cxt.preview_mode=%u s_preview_mode=%u", cxt->sn_cxt.preview_mode, s_preview_mode);
-	if (s_preview_mode != cxt->sn_cxt.preview_mode) {
-		if (1280 <= s_s5k4ec_resolution_Tab_YUV[cxt->sn_cxt.preview_mode].width) {
-			if (!s_hd_applied) {
-				SENSOR_PRINT_HIGH("Applying HD camcorder settings");
-				s5k4ec_I2C_write(s5k4ec_enable_camcorder);
-			}
+	if (1280 <= s_s5k4ec_resolution_Tab_YUV[cxt->sn_cxt.preview_mode].width){
+		if (!s_hd_applied) {
+			SENSOR_PRINT_HIGH("Applying HD camcorder settings");
+			s5k4ec_I2C_write(s5k4ec_enable_camcorder);
 			s_hd_applied = 1;
-		} else if (s_hd_applied) {
-			SENSOR_PRINT_HIGH("Reverting HD camcorder settings");
-			s5k4ec_I2C_write(s5k4ec_disable_camcorder);
 
-			// revert AE
-			_s5k4ec_set_brightness(s_brightness);
-
-			// Revert Metering setting
-			if (s_metering_mode != 0) // matrix
-				s5k4ec_set_Metering(s_metering_mode);
-			s_hd_applied = 0;
+			_s5k4ec_set_ev(s_ev_comp_lvl);
 		}
+	} else if (s_hd_applied) {
+		SENSOR_PRINT_HIGH("Reverting HD camcorder settings");
+		s5k4ec_I2C_write(s5k4ec_disable_camcorder);
 
-		s5k4ec_I2C_write(s5k4ec_preview_return);
+		// revert AE settings
+		//_s5k4ec_set_brightness(s_brightness_lvl);
+		_s5k4ec_set_ev(s_ev_comp_lvl);
+
+		// Revert Sharpness setting, default level is 3
+		s5k4ec_set_sharpness(s_sharpness_lvl);
+
+		// Revert Metering setting
+		// s5k4ec_set_Metering(s_metering_mode);
+
+		s_hd_applied = 0;
 	}
 
 	s_preview_mode = cxt->sn_cxt.preview_mode;
-	s5k4ec_set_FPS(cxt->cmr_set.frame_rate);
 
-	return 0;
+	return SENSOR_SUCCESS;
 }
 
 LOCAL uint32_t _s5k4ec_set_awb(uint32_t mode)
 {
 	if (mode > 6) {
 		SENSOR_PRINT_ERR("Undefined Auto White Balance mode %u",mode);
-		return 0;
+		return SENSOR_OP_PARAM_ERR;
 	}
 
 	SENSOR_PRINT_HIGH("Apply Auto White Balance mode %u", mode);
+	if (mode == 0) // AWB mode
+		s5k4ec_set_REG_TC_DBG_AutoAlgEnBits(AA_WB_ACTIVE, 1);
+	else
+		s5k4ec_set_REG_TC_DBG_AutoAlgEnBits(AA_WB_ACTIVE, 0);
+
 	s5k4ec_I2C_write(s5k4ec_awb_tab[mode]);
 	s_white_balance = mode;
 
 	Sensor_SetSensorExifInfo(SENSOR_EXIF_CTRL_LIGHTSOURCE, (uint32_t) mode);
 	Sensor_SetSensorExifInfo(SENSOR_EXIF_CTRL_WHITEBALANCE, (uint32_t) mode);
 
-	return 0;
+	return SENSOR_SUCCESS;
 }
 
 LOCAL uint32_t _s5k4ec_set_scene_mode(uint32_t mode)
 {
 	SENSOR_PRINT_HIGH("Apply Scene mode %u", mode);
 
-	switch (mode) {
-		case CAMERA_SCENE_MODE_AUTO:
-			s5k4ec_I2C_write(s5k4ec_scene_off);
-			break;
-		case CAMERA_SCENE_MODE_NIGHT:
-			s5k4ec_I2C_write(s5k4ec_scene_night);
-			break;
-		case CAMERA_SCENE_MODE_PORTRAIT:
-			s5k4ec_I2C_write(s5k4ec_scene_portrait);
-			break;
-		case CAMERA_SCENE_MODE_LANDSCAPE:
-			s5k4ec_I2C_write(s5k4ec_scene_landscape);
-			break;
-		case CAMERA_SCENE_MODE_SPORTS:
-			s5k4ec_I2C_write(s5k4ec_scene_sports);
-			break;
-		case CAMERA_SCENE_MODE_PARTY:
-			s5k4ec_I2C_write(s5k4ec_scene_party);
-			break;
-		case CAMERA_SCENE_MODE_BEACH:
-			s5k4ec_I2C_write(s5k4ec_scene_beach);
-			break;
-		case CAMERA_SCENE_MODE_SUNSET:
-			s5k4ec_I2C_write(s5k4ec_scene_sunset);
-			break;
-		case CAMERA_SCENE_MODE_DUSK_DAWN:
-			s5k4ec_I2C_write(s5k4ec_scene_dawn);
-			break;
-		case CAMERA_SCENE_MODE_FALL_COLOR:
-			s5k4ec_I2C_write(s5k4ec_scene_fall);
-			break;
-		case CAMERA_SCENE_MODE_TEXT:
-			s5k4ec_I2C_write(s5k4ec_scene_text);
-			break;
-		case CAMERA_SCENE_MODE_CANDLELIGHT:
-			s5k4ec_I2C_write(s5k4ec_scene_candlelight);
-			break;
-		case CAMERA_SCENE_MODE_FIREWORK:
-			s5k4ec_I2C_write(s5k4ec_scene_firework);
-			break;
-		case CAMERA_SCENE_MODE_BACKLIGHT:
-			s5k4ec_I2C_write(s5k4ec_scene_backlight);
-			break;
-
-		case CAMERA_SCENE_MODE_HDR:
-			/*
-			 * Try to use the previous mode as the template
-			 * Mode of HDR. Just check that it's not
-			 * CAMERA_SCENE_MODE_HDR or we'll have
-			 * infinite recursion.
-			 */
-			SENSOR_PRINT_ERR("HDR: setting previous mode %u", s_cur_scene);
-			_s5k4ec_set_scene_mode(s_cur_scene);
-
-			return SENSOR_SUCCESS; // ignore the error
-		case CAMERA_SCENE_MODE_ACTION:
-		case CAMERA_SCENE_MODE_NORMAL:
-		default:
-			SENSOR_PRINT_ERR("Undefined Scene mode %u", mode);
-		return SENSOR_SUCCESS; // ignore the error
+	if (s_cur_scene == mode) {
+		SENSOR_PRINT_HIGH("Already applied");
+		return SENSOR_SUCCESS;
 	}
 
-	Sensor_SetSensorExifInfo(SENSOR_EXIF_CTRL_SCENECAPTURETYPE,(uint32_t) mode);
+	if (mode != CAMERA_SCENE_MODE_AUTO) {
+		SENSOR_PRINT_HIGH("Trying to revert changes from the previous scene mode");
+		switch (s_cur_scene) {
+		case CAMERA_SCENE_MODE_PORTRAIT:
+		case CAMERA_SCENE_MODE_TEXT:
+			s5k4ec_I2C_write(s5k4ec_scene_revert_sharpness0);
+			break;
+		case CAMERA_SCENE_MODE_LANDSCAPE:
+			s5k4ec_I2C_write(s5k4ec_scene_revert_sharpness0);
+			s5k4ec_set_Metering(s_metering_mode);
+			break;
+		case CAMERA_SCENE_MODE_NIGHT:
+			s5k4ec_I2C_write(s5k4ec_scene_revert_night);
+			s5k4ec_I2C_write(s5k4ec_scene_revert_gain);
+			__s5k4ecgx_set_focus_mode(s_focus_mode);
+			break;
+		case CAMERA_SCENE_MODE_SPORTS:
+		case CAMERA_SCENE_MODE_FIREWORK:
+			s5k4ec_I2C_write(s5k4ec_scene_revert_sports);
+			s5k4ec_I2C_write(s5k4ec_scene_revert_gain);
+			// _s5k4ec_set_iso(s_ISO_mode); // Moved to StreamOn()
+			break;
+		case CAMERA_SCENE_MODE_PARTY:
+			s5k4ec_I2C_write(s5k4ec_scene_revert_sports);
+			_s5k4ec_set_saturation(s_saturation_lvl);
+			break;
+		case CAMERA_SCENE_MODE_BEACH:
+			s5k4ec_I2C_write(s5k4ec_scene_revert_sports);
+			_s5k4ec_set_saturation(s_saturation_lvl);
+			_s5k4ec_set_brightness(s_brightness_lvl);
+			break;
+		case CAMERA_SCENE_MODE_FALL_COLOR:
+			_s5k4ec_set_saturation(s_saturation_lvl);
+			break;
+		case CAMERA_SCENE_MODE_BACKLIGHT:
+			s5k4ec_set_Metering(s_metering_mode);
+			break;
+
+		// These three scenes just adjusts the White balance and disables AWB
+		case CAMERA_SCENE_MODE_SUNSET:
+		case CAMERA_SCENE_MODE_DUSK_DAWN:
+		case CAMERA_SCENE_MODE_CANDLELIGHT:
+			_s5k4ec_set_awb(s_white_balance);
+			/* Fall-through */
+		default:
+			break;
+		}
+		SENSOR_PRINT_HIGH("Revert Done.");
+	}
+
+	switch (mode) {
+	case CAMERA_SCENE_MODE_AUTO:
+		s5k4ec_I2C_write(s5k4ec_scene_off);
+		break;
+	case CAMERA_SCENE_MODE_NIGHT:
+		s5k4ec_I2C_write(s5k4ec_scene_night);
+		break;
+	case CAMERA_SCENE_MODE_PORTRAIT:
+		s5k4ec_I2C_write(s5k4ec_scene_portrait);
+		break;
+	case CAMERA_SCENE_MODE_LANDSCAPE:
+		s5k4ec_I2C_write(s5k4ec_scene_landscape);
+		break;
+	case CAMERA_SCENE_MODE_SPORTS:
+		s5k4ec_I2C_write(s5k4ec_scene_sports);
+		break;
+	case CAMERA_SCENE_MODE_PARTY:
+		s5k4ec_I2C_write(s5k4ec_scene_party);
+		break;
+	case CAMERA_SCENE_MODE_BEACH:
+		s5k4ec_I2C_write(s5k4ec_scene_beach);
+		break;
+	case CAMERA_SCENE_MODE_SUNSET:
+		s5k4ec_set_REG_TC_DBG_AutoAlgEnBits(AA_WB_ACTIVE, 0); // Disables AWB
+		s5k4ec_I2C_write(s5k4ec_scene_sunset);
+		break;
+	case CAMERA_SCENE_MODE_DUSK_DAWN:
+		s5k4ec_set_REG_TC_DBG_AutoAlgEnBits(AA_WB_ACTIVE, 0); // Disables AWB
+		s5k4ec_I2C_write(s5k4ec_scene_dawn);
+		break;
+	case CAMERA_SCENE_MODE_FALL_COLOR:
+		s5k4ec_I2C_write(s5k4ec_scene_fall);
+		break;
+	case CAMERA_SCENE_MODE_TEXT:
+		s5k4ec_I2C_write(s5k4ec_scene_text);
+		break;
+	case CAMERA_SCENE_MODE_CANDLELIGHT:
+		s5k4ec_set_REG_TC_DBG_AutoAlgEnBits(AA_WB_ACTIVE, 0); // Disables AWB
+		s5k4ec_I2C_write(s5k4ec_scene_candlelight);
+		break;
+	case CAMERA_SCENE_MODE_FIREWORK:
+		s5k4ec_I2C_write(s5k4ec_scene_firework);
+		break;
+	case CAMERA_SCENE_MODE_BACKLIGHT:
+		s5k4ec_I2C_write(s5k4ec_scene_backlight);
+		break;
+
+	case CAMERA_SCENE_MODE_HDR:
+		/* Do nothing */
+		break;
+	case CAMERA_SCENE_MODE_ACTION:
+	case CAMERA_SCENE_MODE_NORMAL:
+	default:
+		SENSOR_PRINT_ERR("Undefined Scene mode %u", mode);
+	return SENSOR_SUCCESS; // ignore the error
+	}
+
+	if (mode == CAMERA_SCENE_MODE_HDR)
+		Sensor_SetSensorExifInfo(SENSOR_EXIF_CTRL_SCENECAPTURETYPE, mode);
+	else
+		Sensor_SetSensorExifInfo(SENSOR_EXIF_CTRL_SCENECAPTURETYPE, s_cur_scene);
+
 	s_cur_scene = mode;
 	return SENSOR_SUCCESS;
 }
 
 LOCAL uint32_t _s5k4ec_BeforeSnapshot(uint32_t param)
 {
-	struct camera_context *cxt = camera_get_cxt();
 	uint32_t capture_mode = param & 0xffff;
-	s_flash_mode_en = cxt->cmr_set.flash;
+	struct camera_context *cxt = camera_get_cxt();
 
 	SENSOR_PRINT_HIGH("Begin. capture_mode=%d", capture_mode);
 
@@ -856,27 +1072,71 @@ LOCAL uint32_t _s5k4ec_BeforeSnapshot(uint32_t param)
 		is_cap = 1;
 
 	// Use the global context to find out whether we are using
-	// camera flash or not (assuming the autoflash has been
-	// reduced to a YES or NO flash question)
-	if (FLASH_CLOSE != s_flash_mode_en)
-		s5k4ec_main_flash(1);
-
-	if (LIGHT_STATUS_IS_LOW(s5k4ec_lightcheck())) {
+	// camera flash or not
+	// NOTE: Night and Firework scenes, and HDR don't use flash
+	if ((FLASH_CLOSE != s_flash_state) &&
+	    (s_cur_scene != CAMERA_SCENE_MODE_NIGHT) &&
+	    (s_cur_scene != CAMERA_SCENE_MODE_FIREWORK)){
+		SENSOR_PRINT_HIGH("Flash will be used, not applying any low light tweaks");
+	} else if (LIGHT_STATUS_IS_LOW(s5k4ec_lightcheck())) {
+		/*
+		 * This code block should only run when flash will never be used
+		 * in this shot. These settings will allow the shutter
+		 * speed to be slower than 1/8th second which will never
+		 * guarantee that the flash would cover a complete cycle
+		 */
 		SENSOR_PRINT_HIGH("Low light environment detected");
 		if (s_cur_scene == CAMERA_SCENE_MODE_NIGHT ||
-			s_cur_scene == CAMERA_SCENE_MODE_FIREWORK) {
+		    s_cur_scene == CAMERA_SCENE_MODE_FIREWORK) {
 			SENSOR_PRINT_HIGH("Night mode activate");
 			s5k4ec_I2C_write(s5k4ec_night_mode_On);
 			s_current_env = 2;
+
+			/*
+			 * We could actually support flash with Night Scene mode
+			 * but not the full "High Light" flash since it
+			 * won't last the entire shutter cycle. We could, however, use
+			 * the dimmer "Torch" flash (basically the flashlight mode)
+			 * to act as the supplemental light source. The longer
+			 * exposure should compensate for the drastically dimmer light.
+			 */
+			if (s_flash_state) {
+				SENSOR_PRINT_HIGH("It seems that flash will be used, using torch instead");
+				s_torch_mode_en = 1;
+				Sensor_SetFlash(FLASH_OPEN/*FLASH_TORCH*/);
+
+				s5k4ec_set_ae_awb_enable(1);
+				s5k4ecgx_fast_ae(1);
+
+				s5k4ec_wait_until_ae_stable();
+
+				s5k4ecgx_fast_ae(0);
+				s5k4ec_set_ae_awb_enable(0);
+			}
+		} else if (s_cur_scene == CAMERA_SCENE_MODE_SPORTS) {
+			/*
+			 * The Sports scene mode cannot have low light capture tweaks with
+			 * or without flash since that's the only mode that's designed
+			 * to be a sanic in capturing fast moving objects.
+			 * The shutter speed should go fast in that use case.
+			 */
+			SENSOR_PRINT_HIGH("But still not applying any low light tweaks.");
 		} else {
+			/*
+			 * We won't support flash like what  we did with the night mode
+			 * Use night mode if they want that.
+			 */
 			SENSOR_PRINT_HIGH("Low cap mode activate");
+			s5k4ec_I2C_write(s5k4ec_capture_med_FPS); // medium exposure (~325 msecs)
 			s5k4ec_I2C_write(s5k4ec_low_cap_On);
 			s_current_env = 1;
 		}
+	} else { // normal capture
+		s5k4ec_I2C_write(s5k4ec_capture_short_FPS); // normal exposure (~125 msecs)
 	}
 
 	Sensor_SetMode(capture_mode);
-	SENSOR_Sleep(10);
+	SENSOR_Sleep(10); // wait since Sensor_SetMode() is async
 
 	SENSOR_PRINT_HIGH("s_current_shutter,s_current_gain = %x,%x", s_current_shutter,s_current_gain);
 	return SENSOR_SUCCESS;
@@ -972,95 +1232,48 @@ LOCAL uint32_t _s5k4ec_chang_image_format(uint32_t param)
 LOCAL uint32_t _s5k4ec_after_snapshot(uint32_t param)
 {
 	SENSOR_PRINT_HIGH("=========sonia SENSOR: _s5k4ec_after_snapshot %u",param);
-	uint16_t width, height=0;
+	uint16_t width = 0, height = 0;
 
-	if (FLASH_CLOSE != s_flash_mode_en)
+	// Revert reg settings regarding flash and disable non Highlight flash
+	if (FLASH_CLOSE != s_flash_state)
 		s5k4ec_main_flash(0);
 
-	// Reset the low (light) capture settings as soon as possible.
-	if (2 == s_current_env) {
-		s5k4ec_I2C_write(s5k4ec_night_mode_Off);
-	} else if (1 == s_current_env) {
-		s5k4ec_I2C_write(s5k4ec_low_cap_Off);
+	if (s_torch_mode_en) {
+		s_torch_mode_en = 0;
+		Sensor_SetFlash(FLASH_CLOSE);
 	}
+
+	// Reset the low light capture settings as soon as possible.
+	if (2 == s_current_env)
+		s5k4ec_I2C_write(s5k4ec_night_mode_Off);
+	else if (1 == s_current_env)
+		s5k4ec_I2C_write(s5k4ec_low_cap_Off);
 	s_current_env = 0;
 
-	//_s5k4ec_recovery_init();
+	// Restore previous sensor mode (which is the preview mode)
 	Sensor_SetMode((uint32_t)param);
-	//SENSOR_Sleep(10);
+	SENSOR_Sleep(10); // NOTE: Sensor_SetMode() is async, wait for it.
+	s5k4ec_I2C_write(s5k4ec_preview_return);
 	is_cap = 0;
 
-
+	// Retrieve information about the size of the captured image
 	Sensor_WriteReg(0x002C, 0x7000);
 	Sensor_WriteReg(0x002E, 0x1D02);
-	width = Sensor_ReadReg(0x0f12);
-	Sensor_WriteReg(0x002E, 0x2BC4);
+	width = Sensor_ReadReg(0x0F12);
 	height = Sensor_ReadReg(0x0F12);
-	SENSOR_PRINT_HIGH("width=%x, height=%x",width,height);
+	SENSOR_PRINT_HIGH("width=0x%X(%u), height=0x%X(%u)", width, width, height, height);
 
 	return SENSOR_SUCCESS;
 }
 
-LOCAL uint32_t _s5k4ec_MatchZone(SENSOR_EXT_FUN_T_PTR param_ptr)
-{
-	SENSOR_RECT_T zone_rect;
-	uint32_t rtn=SENSOR_SUCCESS;
-	memset((void*)&zone_rect, 0, sizeof(SENSOR_RECT_T));
-	switch (param_ptr->cmd)
-	{
-	case SENSOR_EXT_FOCUS_START:
-			switch (param_ptr->param)
-			{
-			case SENSOR_EXT_FOCUS_ZONE:
-			case SENSOR_EXT_FOCUS_MULTI_ZONE:
-					zone_rect.w = FOCUS_ZONE_W;
-					zone_rect.h = FOCUS_ZONE_H;
-					break;
-			default:
-					break;
-			}
-			break;
-	case SENSOR_EXT_EXPOSURE_START:
-			switch (param_ptr->param)
-			{
-			case SENSOR_EXT_EXPOSURE_ZONE:
-					zone_rect.w = EXPOSURE_ZONE_W;
-					zone_rect.h = EXPOSURE_ZONE_H;
-					break;
-			default:
-					break;
-			}
-			break;
-	 default:
-		  break;
-	}
-
-	if ((0x00 != s_s5k4ec_resolution_Tab_YUV[SENSOR_MODE_PREVIEW_ONE].width)&& (0x00 !=s_s5k4ec_resolution_Tab_YUV[SENSOR_MODE_PREVIEW_ONE].height)
-	    && (0x00 != zone_rect.w)&& (0x00 != zone_rect.h))
-	{
-		param_ptr->zone.x =(zone_rect.w * param_ptr->zone.x) /
-		    s_s5k4ec_resolution_Tab_YUV[SENSOR_MODE_PREVIEW_ONE].width;
-		param_ptr->zone.y =(zone_rect.h * param_ptr->zone.y) /
-		    s_s5k4ec_resolution_Tab_YUV[SENSOR_MODE_PREVIEW_ONE].height;
-	}
-	else
-	{
-		SENSOR_PRINT_ERR("SENSOR: _s5k4ec_MatchZone, w:%d, h:%d error \n",zone_rect.w, zone_rect.h);
-		rtn = SENSOR_FAIL;
-	}
-
-	SENSOR_PRINT_HIGH("SENSOR: _s5k4ec_MatchZone, x:%d, y:%d \n",param_ptr->zone.x, param_ptr->zone.y);
-	return rtn;
-}
-
-LOCAL uint32_t _s5k4ec_AutoFocusTrig(__attribute__((unused)) SENSOR_EXT_FUN_PARAM_T_PTR param_ptr)
+LOCAL uint32_t _s5k4ec_AutoFocusTrig(SENSOR_EXT_FUN_PARAM_T_PTR param_ptr)
 {
 	struct camera_context *cxt = camera_get_cxt();
 	uint32_t rtn = SENSOR_FAIL;
 	uint16_t reg_value;
-	uint16_t frame_time = s5k4ecgx_get_frame_time();
+	uint16_t frame_time;
 	int8_t flash_mode = cxt->cmr_set.flash;
-	int fresh = 1, retries = 7; // for workaround
+	int fresh = 1, wait = 5, restart_wait = 0; // for workaround
 	int i;
 
 	SENSOR_PRINT_HIGH("Start");
@@ -1075,8 +1288,10 @@ LOCAL uint32_t _s5k4ec_AutoFocusTrig(__attribute__((unused)) SENSOR_EXT_FUN_PARA
 
 		s5k4ec_wait_until_ae_stable();
 		// Lock AWB + AE
-		_s5k4ec_set_awb(0);
+		s5k4ec_set_ae_awb_enable(0);
 	}
+
+	frame_time = s5k4ecgx_get_frame_time();
 
 	s5k4ec_I2C_write(s5k4ec_single_AF_start);
 
@@ -1085,10 +1300,10 @@ LOCAL uint32_t _s5k4ec_AutoFocusTrig(__attribute__((unused)) SENSOR_EXT_FUN_PARA
 	 * first phase, too early or we would get an error
 	 * value.
 	 */
-	SENSOR_Sleep(frame_time*2);
+	SENSOR_Sleep(frame_time * 2);
 
 
-	for (i = 30; i--; ) {
+	for (i = 35; i--;) {
 		SENSOR_Sleep(frame_time);
 		Sensor_WriteReg(0x002C, 0x7000);
 		Sensor_WriteReg(0x002E, 0x2EEE);
@@ -1103,31 +1318,59 @@ LOCAL uint32_t _s5k4ec_AutoFocusTrig(__attribute__((unused)) SENSOR_EXT_FUN_PARA
 			continue;
 		}
 
-		// Erroneous state, when reg_value is
-		// either of the following: 0,3,4,6,8
-		// In the case of both timeout and error
-		// Give the error message a higher precedence
-		if (reg_value != 0x1 || reg_value != 2) {
+		/*
+		 * According to the old datasheet, the read register values
+		 * have a meaning, not all of it are errors.
+		 * 0 - Idle AF                  6 - AF Scene Detecting (AE related)
+		 * 1 - AF searching             7 - AF Scene Detecting
+		 * 2 - AF search success        8 - AF Scene Detecting (AF Window related)
+		 * 3 - Low confidence position
+		 * 4 - AF was cancelled         *any other value - probably an error
+		 */
+		if ((reg_value == 6) || (reg_value == 7) || (reg_value == 8) || (reg_value == 0)) {
 			/*
 			 * Issue: Unknown delay between AF start and progress checks.
 			 * Specially after setting the AF window, there would be
-			 * some unknown delay before the AF can actually start.
-			 * Unfortunately, it also seemed that it's independent of
-			 * the frame rate. One characteristic of this problem
-			 * is that it only happens at the start of each AF focusing.
+			 * some unknown delay. Unfortunately, it also seemed
+			 * that it's independent of the frame rate.
+			 * AF search will start automatically afterwards.
 			 *
-			 * If we get an error at the start, try to skip it up to
-			 * 7 times. When a single Progress is received, we go on
-			 * as usual.
+			 * Issue: When changing from CAF to AF, it might take more time
+			 * to initiate a single AF search causing the reg_value at
+			 * 0x70002EEE to be 0. AF search will never start in most cases.
 			 */
-			if ((fresh == 1) && retries) {
-				SENSOR_PRINT_ERR("[1st]AF -Setup");
-				retries--;
-				continue;
+			if (fresh == 1) {
+				if (reg_value) {
+					SENSOR_PRINT_ERR("[1st]AF -Detecting (%u)", reg_value);
+					continue;
+				} else if (wait) {
+					if (!(restart_wait--)) {
+						SENSOR_PRINT_ERR("[1st]AF -Restart AF");
+						s5k4ec_I2C_write(s5k4ec_single_AF_start);
+						restart_wait = 2;
+					} else {
+						SENSOR_PRINT_ERR("[1st]AF -Waiting");
+					}
+					wait--;
+					continue;
+				} else {
+					SENSOR_PRINT_ERR("[1st]AF -Wait timed out! ");
+				}
+			} else {
+				SENSOR_PRINT_ERR("[1st]AF -Error! (%u)", reg_value);
 			}
 
-			SENSOR_PRINT_ERR("[1st]AF -Error!");
-		} else if (i <= 0) {
+		} else if (reg_value == 4)  {
+			SENSOR_PRINT_ERR("[1st]AF -Cancelled!");
+			goto cleanup;
+		} else if (reg_value == 3)  {
+			// Low Confidence AF search result automatically cancels
+			// no need to send the s5k4ec_AF_off_1 reg setting
+			SENSOR_PRINT_ERR("[1st]AF -Low confidence result");
+			goto cleanup;
+		} else if (i > 0) { //etc
+			SENSOR_PRINT_ERR("[1st]AF -Error! (%u)", reg_value);
+		} else {
 			SENSOR_PRINT_ERR("[1st]AF -Timeout!");
 		}
 
@@ -1162,16 +1405,11 @@ cleanup:
 	if (flash_mode != FLASH_CLOSE) {
 		s5k4ecgx_fast_ae(0);
 		s5k4ec_preflash_af(0);
+		s5k4ec_set_ae_awb_enable(1);
 	}
 	SENSOR_PRINT_HIGH("Done.");
 
 	return rtn;
-}
-
-LOCAL uint32_t _s5k4ec_AutoFocusMultiZone(__attribute__((unused)) SENSOR_EXT_FUN_PARAM_T_PTR param_ptr)
-{
-	SENSOR_PRINT_ERR("Not yet implemented");
-	return SENSOR_SUCCESS;
 }
 
 LOCAL uint32_t _s5k4ecgx_set_focus_touch_position(SENSOR_EXT_FUN_PARAM_T_PTR param_ptr)
@@ -1188,7 +1426,9 @@ LOCAL uint32_t _s5k4ecgx_set_focus_touch_position(SENSOR_EXT_FUN_PARAM_T_PTR par
 	height = s_s5k4ec_resolution_Tab_YUV[s_preview_mode].height;
 	touch_x = param_ptr->zone[0].x;
 	touch_y = param_ptr->zone[0].y;
-	SENSOR_PRINT_HIGH("Start x=%d, y=%d, w=%d, h=%d, width=%d height=%d",
+
+	SENSOR_PRINT_HIGH(
+		"Start x=%d, y=%d, w=%d, h=%d, width=%d height=%d",
 		param_ptr->zone[0].x,param_ptr->zone[0].y, param_ptr->zone[0].w, param_ptr->zone[0].h,
 		width, height
 	);
@@ -1196,7 +1436,15 @@ LOCAL uint32_t _s5k4ecgx_set_focus_touch_position(SENSOR_EXT_FUN_PARAM_T_PTR par
 	if (touch_x < 0 || touch_y < 0) {
 		SENSOR_PRINT_HIGH("Invalid coordinates, reseting AF window setting");
 		_s5k4ecgx_reset_focus_touch_position();
+		return 0;
 	}
+
+	if (!touch_x && !touch_y && !param_ptr->zone[0].w && !param_ptr->zone[0].h) {
+		SENSOR_PRINT_HIGH("Rectangle at (0,0) w=0 and h=0 considered invalid.");
+		_s5k4ecgx_reset_focus_touch_position();
+		return 0;
+	}
+
 
 	Sensor_WriteReg(0xFCFC, 0xD000);
 	Sensor_WriteReg(0x002C, 0x7000);
@@ -1230,7 +1478,7 @@ LOCAL uint32_t _s5k4ecgx_set_focus_touch_position(SENSOR_EXT_FUN_PARAM_T_PTR par
 	/*
 	 * After this code block lies a copy-pasted code to determine the
 	 * coordinates of top-left corners of the two AF search windows.
-	 * Re-read the last paragraph if you didn't get something was up.
+	 * Re-read the previous sentence if you didn't get something was up.
 	 *
 	 * The coordinates are already given but why calculate it?
 	 *
@@ -1369,27 +1617,20 @@ LOCAL uint32_t _s5k4ec_StartAutoFocus(uint32_t param)
 	SENSOR_EXT_FUN_PARAM_T_PTR ext_ptr = (SENSOR_EXT_FUN_PARAM_T_PTR) param;
 	SENSOR_PRINT_HIGH("Start. param = %d", ext_ptr->param);
 
-	s5k4ec_low_light_AF_check();
-
-	// This function usualy is activated when doing AF mode is macro
-	// But some camera apps doesn't even expose changing AF modes...
-	_s5k4ecgx_set_focus_touch_position(ext_ptr);
-
 	switch (ext_ptr->param) {
-	case SENSOR_EXT_FOCUS_MULTI_ZONE:
-		rtn = _s5k4ec_AutoFocusMultiZone(ext_ptr);
-		break;
-	case SENSOR_EXT_FOCUS_MACRO:
-		rtn |= _s5k4ec_AutoFocusTrig(ext_ptr);
-		break;
 	case SENSOR_EXT_FOCUS_TRIG:
-		// Function not in vendor blob, used to revert any changes by
-		// _s5k4ecgx_set_focus_touch_position().
-		// Uncomment when you used _s5k4ecgx_set_focus_touch_position()
-		// only for AF Macro.
-		// rtn = _s5k4ecgx_reset_focus_touch_position();
+	case SENSOR_EXT_FOCUS_MACRO:
+		s5k4ec_low_light_AF_check();
+		// This function usualy is activated when doing AF mode is macro
+		// But some camera apps doesn't even expose changing AF modes...
+		_s5k4ecgx_set_focus_touch_position(ext_ptr);
+
 		rtn |= _s5k4ec_AutoFocusTrig(ext_ptr);
+		break;
+	case SENSOR_EXT_FOCUS_CAF:
+	case SENSOR_EXT_FOCUS_MULTI_ZONE:
 	case SENSOR_EXT_FOCUS_ZONE:
+	case SENSOR_EXT_FOCUS_CHECK_AF_GAIN:
 	default:
 		break;
 	}
@@ -1397,122 +1638,196 @@ LOCAL uint32_t _s5k4ec_StartAutoFocus(uint32_t param)
 	return rtn;
 }
 
-LOCAL uint32_t _s5k4ec_ExposureAuto(void)
-{
-	SENSOR_PRINT_ERR("Not implemented");
-
-	return SENSOR_SUCCESS;
-}
-
-LOCAL uint32_t _s5k4ec_ExposureZone(__attribute__((unused)) SENSOR_EXT_FUN_T_PTR param_ptr)
-{
-	SENSOR_PRINT_ERR("Not implemented");
-
-	return SENSOR_SUCCESS;
-}
-
-LOCAL uint32_t _s5k4ec_StartExposure(uint32_t param)
-{
-	uint32_t rtn=SENSOR_SUCCESS;
-
-	SENSOR_EXT_FUN_T_PTR ext_ptr=(SENSOR_EXT_FUN_T_PTR)param;
-
-	SENSOR_PRINT("param=%d", ext_ptr->param);
-	switch (ext_ptr->param) {
-		case SENSOR_EXT_EXPOSURE_AUTO:
-			rtn = _s5k4ec_ExposureAuto();
-			break;
-		case SENSOR_EXT_EXPOSURE_ZONE:
-			rtn = _s5k4ec_ExposureZone(ext_ptr);
-		/* Fall-through */
-		default:
-			break;
-	}
-
-	return rtn;
-}
-
+/*
+ * The function below sets the exposure and gain by using
+ * the sensor's AE algorithm.
+ * Works great most of the time unless if its in low light
+ * environments.
+ */
+#if 0
 LOCAL uint32_t _s5k4ec_SetEV(uint32_t param)
 {
 	uint32_t rtn = SENSOR_SUCCESS;
 	SENSOR_EXT_FUN_PARAM_T_PTR ext_ptr = (SENSOR_EXT_FUN_PARAM_T_PTR) param;
-
-	SENSOR_PRINT("SENSOR: _s5k4ec_SetEV param: 0x%x", ext_ptr->param);
-	uint32_t shutter = 0;
-	uint32_t gain = 0;
-
 	uint32_t ev = ext_ptr->param;
+	int16_t level = 3;
+
+	static int16_t save_level;
+	static int8_t restore_needed = 0;
+
+	SENSOR_PRINT_HIGH("param: 0x%x", ext_ptr->param);
+
 	switch(ev) {
 	case SENSOR_HDR_EV_LEVE_0:
-		s5k4ec_I2C_write(s5k4ec_ev_tab[0]);
+		save_level = s_ev_comp_lvl;
+		level = 4;
 		break;
 	case SENSOR_HDR_EV_LEVE_1:
-		s5k4ec_I2C_write(s5k4ec_ev_tab[3]);
+		/*
+		 * Sprd's libcamera calls this function with param
+		 * SENSOR_HDR_EV_LEVE_1 twice: first as a HDR step
+		 * and second to restore the EV Comp setting.
+		 */
+		if (!restore_needed) { // as an HDR step
+			level = 5;
+		} else { // restore the EV Compensation setting
+			level = save_level;
+		}
+		restore_needed = !restore_needed;
 		break;
 	case SENSOR_HDR_EV_LEVE_2:
-		s5k4ec_I2C_write(s5k4ec_ev_tab[6]);
+		level = 6;
 		break;
 	default:
-		break;
+		SENSOR_PRINT_ERR("Undefined parameter level");
+		return 0;
 	}
+
+	s5k4ec_I2C_write(s5k4ec_preview_return);
+
+	s5k4ec_set_ae_enable(1);
+	s5k4ecgx_fast_ae(1);
+
+	if (level < 0) {
+		Sensor_WriteReg(0x0028, 0x7000);
+		Sensor_WriteReg(0x002A, 0x023A); // REG_TC_UserExposureVal88
+		Sensor_WriteReg(0x0F12, 0x0056); // 0x100 -- default
+	} else if (level > 6) {
+		Sensor_WriteReg(0x0028, 0x7000);
+		Sensor_WriteReg(0x002A, 0x023A); // REG_TC_UserExposureVal88
+		Sensor_WriteReg(0x0F12, 0x0300);
+	} else {
+		_s5k4ec_set_ev(level);
+	}
+
+	s5k4ec_wait_until_ae_stable();
+	s5k4ecgx_fast_ae(0);
+	s5k4ec_set_ae_enable(0);
 	return rtn;
 }
-
-LOCAL uint8_t af_firmware[] = {
-	#if 0 //\B2\BB\D3\C3AF
-	0x80,
-	0x00,
-	#endif
-};
-
-LOCAL int _s5k4ec_init_firmware(uint32_t param)
-{
-	int ret = 0;
-	uint32_t i = 0;
-	uint32_t init_num = NUMBER_OF_ARRAY(af_firmware);
-	SENSOR_EXT_FUN_PARAM_T_PTR ext_ptr = (SENSOR_EXT_FUN_PARAM_T_PTR)param;
-	uint8_t  *reg_ptr = af_firmware;
-	uint16_t reg_val_1,reg_val_2;
-
-	SENSOR_PRINT_HIGH("SENSOR: _s5k4ec_init_firmware: cmd=%d!.\n", ext_ptr->cmd);
-	switch (ext_ptr->param)	{
-	 case SENSOR_EXT_FOCUS_TRIG:	//auto focus
-		    reg_ptr = af_firmware;
-		    break;
-	 default:
-		    break;
-	}
-
-	Sensor_WriteReg(0x3000, 0x20);
-	for (i = 0; i < 4; i++) {
-		ret = Sensor_WriteData(reg_ptr, init_num);
-		if (ret != 0) {
-			SENSOR_PRINT_ERR("SENSOR: write sensor reg fai, ret : %d\n", ret);
-			continue;
-		}
-		break;
-	}
-// 	Sensor_WriteReg(0x3022, 0x00);
-	Sensor_WriteReg(0x3023, 0x00);
-	Sensor_WriteReg(0x3024, 0x00);
-	Sensor_WriteReg(0x3025, 0x00);
-	Sensor_WriteReg(0x3026, 0x00);
-	Sensor_WriteReg(0x3027, 0x00);
-	Sensor_WriteReg(0x3028, 0x00);
-	Sensor_WriteReg(0x3029, 0x7F);
-	Sensor_WriteReg(0x3000, 0x00);
-
-	reg_val_1 = Sensor_ReadReg(0x3000);
-	reg_val_2 = Sensor_ReadReg(0x3004);
-	//      sc8810_i2c_set_clk(1,100000); //wjp
-	SENSOR_PRINT_HIGH("SENSOR: _s5k4ec_init_firmware: E!.\n");
-#if 0
-	//SENSOR_PRINT_HIGH("SENSOR: 0x3029=0x%x,0x3000=0x%x,0x3004=0x%x.\n",Sensor_ReadReg(0x3029),reg_val_1,reg_val_2);
-	//SENSOR_PRINT_HIGH("SENSOR: 0x8000=0x%x,0x8002=0x%x,0x8f57=0x%x.\n",Sensor_ReadReg(0x8000),Sensor_ReadReg(0x8002),Sensor_ReadReg(0x8f57));
 #endif
-	return ret;
-}
+/*
+ * The function below disables the AE algorithm and manually
+ * computes the exposure and gain.
+ * The computation is based on the last EV and ISO values
+ * the AE algorithm has set.
+ * Works OK all of the time, even in low light environments.
+ */
+LOCAL uint32_t _s5k4ec_SetEV(uint32_t param)
+{
+#define MAX_A_D_GAIN (16 << 8) //max combined analog+digital gain, 16x (~800ISO)
+#define MAX_EV_TIME ( 650 * 100) // max exposure time, 650ms
 
+	uint32_t rtn = SENSOR_SUCCESS;
+	SENSOR_EXT_FUN_PARAM_T_PTR ext_ptr = (SENSOR_EXT_FUN_PARAM_T_PTR) param;
+	uint16_t f_gain = 0;
+	uint16_t f_ev = 0;
+
+	static int8_t restore_needed = 0;
+	static int32_t ev;
+	static int32_t gain;
+	static int32_t manual_ev;
+	static int32_t manual_gain;
+	static int16_t auto_algorithm_en; // REG_TC_DBG_AutoAlgEnBits
+
+	SENSOR_PRINT_HIGH("param: 0x%x", ext_ptr->param);
+
+	switch(ext_ptr->param) {
+	case SENSOR_HDR_EV_LEVE_0:
+		SENSOR_PRINT_HIGH("Backup AE, EV and Gain settings");
+		// Calculate Exposure time
+		Sensor_WriteReg(0xFCFC, 0xD000);
+		Sensor_WriteReg(0x002C, 0x7000);
+		Sensor_WriteReg(0x002E, 0x2C28);
+		ev = Sensor_ReadReg(0x0F12);
+		ev += Sensor_ReadReg(0x0F12) << 16;
+		ev = ev >> 2;
+		SENSOR_PRINT_HIGH("ev=0x%X(%f)\n", ev, (float)ev / 100);
+
+		// Calculate sensor Gains
+		// NOTE: Analog and Digital gains are in 8.8 fixed point numbers
+		Sensor_WriteReg(0x002C, 0x7000);
+		Sensor_WriteReg(0x002E, 0x2BC4);
+		gain = Sensor_ReadReg(0x0F12); //A gain
+		gain = gain * Sensor_ReadReg(0x0F12); //D gain
+		// NOTE: By this line, gain is a 16.16 fixed-point number
+		// But the sensor only reads 8.8 values
+		// We need to reduce its precision.
+		// formula: let x=>16.16 number, y=>temp variable, z=>result
+		//          y = x / (2 ^ 16) // convert to real number
+		//          z = y * (2 ^ 8)  // convert back to 8.8 fp number
+		//          z = x / (2 ^ 8)  // Simplified form
+		gain =  gain >> 8;
+		// CAUTION: If this gain value goes under 1, you may want
+		//          to check why that happens.
+		SENSOR_PRINT_HIGH("gain=0x%X(%f)\n", gain, (float)gain / 256);
+
+		// Backup auto algorithm switches
+		Sensor_WriteReg(0x002C, 0x7000);
+		Sensor_WriteReg(0x002E, 0x04E6);
+		auto_algorithm_en = Sensor_ReadReg(0x0F12);
+		SENSOR_PRINT_HIGH("AutoAlgEn=0x%X\n", auto_algorithm_en);
+
+		// Backup manual EV and Gain
+		Sensor_WriteReg(0x002C, 0x7000);
+		Sensor_WriteReg(0x002E, 0x04AC);
+		manual_ev = Sensor_ReadReg(0x0F12);
+		manual_ev |= Sensor_ReadReg(0x0F12) << 16;
+		Sensor_WriteReg(0x002E, 0x04B2);
+		manual_gain = Sensor_ReadReg(0x0F12);
+		SENSOR_PRINT_HIGH("m_gain=0x%X m_ev=ox%X\n", manual_gain, manual_ev);
+
+		SENSOR_PRINT_HIGH("Backup Done, this will be restored later.");
+
+		// Disable LEI adjustments and AE algorithms
+		Sensor_WriteReg(0x0028, 0x7000);
+		Sensor_WriteReg(0x002A, 0x04E6);
+		Sensor_WriteReg(0x0F12, auto_algorithm_en & 0xFFF9);
+
+		f_gain = gain / 2;
+		f_ev = ev / 2;
+		break;
+	case SENSOR_HDR_EV_LEVE_1:
+		if (!restore_needed) { // as an HDR step
+			f_gain = gain;
+			f_ev = ev;
+		} else {
+			SENSOR_PRINT_HIGH("HDR has finished, will restore values now.");
+			// Restore defaults
+			f_gain = manual_gain;
+			f_ev = manual_ev;
+
+			// Restore auto algorithm switches
+			Sensor_WriteReg(0x0028, 0x7000);
+			Sensor_WriteReg(0x002A, 0x04E6);
+			Sensor_WriteReg(0x0F12, auto_algorithm_en);
+		}
+		restore_needed = !restore_needed;
+		break;
+	case SENSOR_HDR_EV_LEVE_2:
+		f_gain = gain * 2;
+		f_ev = ev * 2;
+		break;
+	default:
+		SENSOR_PRINT_ERR("Undefined parameter level");
+		return 0;
+	}
+
+	f_gain = (f_gain > MAX_A_D_GAIN) ? MAX_A_D_GAIN : f_gain;
+	f_ev = (f_ev > MAX_EV_TIME) ? MAX_EV_TIME : f_ev;
+
+	SENSOR_PRINT_HIGH("f_gain=0x%X(%f)\n", f_gain, (float)f_gain / 256);
+	SENSOR_PRINT_HIGH("f_ev=0x%X(%f msec) \n", f_ev, (float)f_ev / 100);
+
+	Sensor_WriteReg(0x002A, 0x04AC);
+	Sensor_WriteReg(0x0F12, (int16_t) (f_ev & 0xFFFF));   // REG_SF_USER_Exposure
+	Sensor_WriteReg(0x0F12, (int16_t) (f_ev >> 16));      // REG_SF_USER_ExposureHigh
+	Sensor_WriteReg(0x0F12, 0x0001);         // REG_SF_USER_ExposureChanged
+	Sensor_WriteReg(0x0F12, f_gain);         // REG_SF_USER_TotalGain
+	Sensor_WriteReg(0x0F12, 0x0001);         // REG_SF_USER_TotalGainChanged
+
+	return rtn;
+}
 
 LOCAL uint32_t _s5k4ec_ExtFunc(uint32_t ctl_param)
 {
@@ -1524,39 +1839,20 @@ LOCAL uint32_t _s5k4ec_ExtFunc(uint32_t ctl_param)
 	switch (ext_ptr->cmd)
 	{
 	 case SENSOR_EXT_FUNC_INIT:
-		rtn = _s5k4ec_init_firmware(ctl_param);
+		// rtn = _s5k4ec_init_firmware(ctl_param);
 		break;
 	 case SENSOR_EXT_FOCUS_START:
 		rtn = _s5k4ec_StartAutoFocus(ctl_param);
 		break;
-	case SENSOR_EXT_EXPOSURE_START:
-		rtn = _s5k4ec_StartExposure(ctl_param);
-		break;
 	case SENSOR_EXT_EV:
 		rtn = _s5k4ec_SetEV(ctl_param);
+		break;
+	case SENSOR_EXT_EXPOSURE_START:
 	default:
 		    break;
 	}
 
 	return rtn;
-}
-
-LOCAL uint32_t _s5k4ec_recovery_init()
-{
-	SENSOR_PRINT("SENSOR: s5k4ec_steamon recovery\n");
-
-	Sensor_WriteReg(0x0028, 0x7000);
-	Sensor_WriteReg(0x002A, 0x0242);
-	Sensor_WriteReg(0x0F12, 0x0000);	//#REG_TC_GP_EnablePreview
-
-	Sensor_WriteReg(0x0028, 0xD000);
-	Sensor_WriteReg(0x002A, 0xB0A0);
-	Sensor_WriteReg(0x0F12, 0x0000);	//Clear cont. clock befor config change
-
-	Sensor_WriteReg(0x0028, 0x7000);
-	Sensor_WriteReg(0x002A, 0x0244);
-	Sensor_WriteReg(0x0F12, 0x0001);	//#REG_TC_GP_EnablePreviewChanged
-	return 0;
 }
 
 LOCAL uint32_t _s5k4ec_StreamOn(__attribute__((unused)) uint32_t param)
@@ -1565,23 +1861,112 @@ LOCAL uint32_t _s5k4ec_StreamOn(__attribute__((unused)) uint32_t param)
 
 	if (1 != is_cap) {
 		SENSOR_PRINT_HIGH("zxdbg preview stream on");
-		Sensor_WriteReg(0x0028, 0x7000);
-		Sensor_WriteReg(0x002A, 0x023E);
-		Sensor_WriteReg(0x0F12, 0x0001);  //#REG_TC_GP_EnablePreview
-		Sensor_WriteReg(0x0F12, 0x0001);  //#REG_TC_GP_EnablePreviewChanged
 
-		Sensor_WriteReg (0x0028, 0xD000);
-		Sensor_WriteReg(0x002A, 0x1000);
-		Sensor_WriteReg(0x0F12, 0x0001);
-		SENSOR_Sleep(10);
+		/*
+		 * NOTE: There is no reason to manually activate the
+		 * preview stream, even when changing resolutions
+		 * since the REG_TC_GP_PrevOpenAfterChange register
+		 * will open it when it's set to 1.
+		 */
+		// s5k4ec_I2C_write(s5k4ec_preview_Stream_On);
+		// SENSOR_Sleep(10);
+
+
+		if ((s_cur_scene != CAMERA_SCENE_MODE_BEACH) ||
+		    (s_cur_scene != CAMERA_SCENE_MODE_FIREWORK) ||
+		    (s_cur_scene != CAMERA_SCENE_MODE_PARTY) ||
+		    (s_cur_scene != CAMERA_SCENE_MODE_SPORTS)) {
+			SENSOR_PRINT_HIGH("workaround: Reapplying ISO settings");
+			_s5k4ec_set_iso(s_ISO_mode);
+		}
+
+#if defined(WA_BOOST_DDR_FREQ_720P) || defined(WA_LIMIT_HD_CAM_24FPS)
+		s_fps_cur_mode = FPS_MODE_INVALID;
+
+		if (s_hd_applied) {
+#ifdef WA_BOOST_DDR_FREQ_720P
+			if (s_ddr_boosted == 0) {
+				if (s5k4ec_ddr_is_slow(1) == 0) {
+					SENSOR_PRINT_HIGH("workaround: Increasing DDR freq for 720p recording");
+				} else {
+					SENSOR_PRINT_HIGH("Failed to apply workaround, video may be more choppy");
+				}
+			}
+#endif
+#ifdef WA_LIMIT_HD_CAM_24FPS
+			SENSOR_PRINT_HIGH("workaround: s_target_max_fps %u", s_target_max_fps);
+			if ((s_target_max_fps > 24) || (s_target_max_fps == 0)) {
+				if (!s_target_max_fps) // Auto FPS is requested
+					s5k4ec_set_manual_FPS(0, 24);
+				else
+					s5k4ec_set_FPS(24);
+
+				SENSOR_PRINT_HIGH("workaround: limiting maximum FPS to 24");
+				s_fps_cur_mode = FPS_MODE_OVERRIDE;
+			}
+#endif
+		}
+#endif
+
+		// Apply the settings that tweaks the maximum Exposure time
+		// only for the scenes that don't change it.
+		if ((s_cur_scene != CAMERA_SCENE_MODE_NIGHT &&
+		     s_cur_scene != CAMERA_SCENE_MODE_FIREWORK) &&
+		     s_fps_cur_mode != FPS_MODE_OVERRIDE) {
+			s5k4ec_set_FPS(s_target_max_fps);
+		}
+
+		/*
+		 * Force unlock both AE and AWB on Stream On
+		 * Sometimes the AE/AWB lock gets stuck without being released
+		 * Due to some unforeseeable events (e.g. errors, OOM killer).
+		 */
+		s5k4ec_set_ae_awb_enable(1);
 	} else {
 		SENSOR_PRINT_HIGH("zxdbg capture stream on");
+
 		s5k4ec_I2C_write(s5k4ec_capture_start);
 	}
 
-	return 0;
+	s_stream_is_on = 1;
+	return SENSOR_SUCCESS;
 }
 
+LOCAL uint32_t _s5k4ec_StreamOff(__attribute__((unused)) uint32_t param)
+{
+	struct camera_context *cxt = camera_get_cxt();
+
+	SENSOR_PRINT_HIGH("Stop");
+
+#ifdef WA_BOOST_DDR_FREQ_720P
+	if (s_ddr_boosted)
+		s5k4ec_ddr_is_slow(0);
+#endif
+
+	s_flash_state = cxt->cmr_set.flash;
+	if ((s_cur_scene == CAMERA_SCENE_MODE_NIGHT ||
+	     s_cur_scene == CAMERA_SCENE_MODE_FIREWORK ||
+	     s_cur_scene == CAMERA_SCENE_MODE_HDR)) {
+
+		if (cxt->cmr_set.flash) {
+			cxt->cmr_set.flash = 0;
+			SENSOR_PRINT_HIGH("Flash is forced-disabled on the current scene mode.");
+		}
+	} else if ((FLASH_CLOSE != s_flash_state) && s_stream_is_on) {
+		s5k4ec_main_flash(1);
+	}
+
+	/*
+	 * Work around: Allow setting the scene mode again by invalidating the state
+	 * Some camera apps apply user settings (even the default)
+	 * after applying the scene modes that was meant to override
+	 * those user knobs once.
+	 */
+	s_cur_scene = (uint16_t) -1;
+
+	s_stream_is_on = 0;
+	return SENSOR_SUCCESS;
+}
 
 LOCAL uint32_t s5k4ec_I2C_write(SENSOR_REG_T* sensor_reg_ptr)
 {
@@ -1597,50 +1982,75 @@ LOCAL uint32_t s5k4ec_I2C_write(SENSOR_REG_T* sensor_reg_ptr)
 	Sensor_SendRegTabToSensor(&infotab);
 
 
-	 return 0;
+	return 0;
 }
 
 LOCAL uint32_t s5k4ec_set_Metering(uint32_t metering_mode)
 {
-	if(metering_mode >= 3) {
+	const char *str = "";
+
+	if(metering_mode >= CAMERA_AE_MODE_MAX) {
 		SENSOR_PRINT_ERR("Undefined Metering mode %u", metering_mode);
 		return SENSOR_OP_PARAM_ERR;
 	}
 
 	switch(metering_mode) {
-		case 0:
+		case CAMERA_AE_FRAME_AVG:
 			s5k4ec_I2C_write(s5k4ec_metering_matrix);
+			str = "Matrix";
 			break;
-		case 1:
-			s5k4ec_I2C_write(s5k4ec_metering_spot);
-			break;
-		case 2:
+		case CAMERA_AE_CENTER_WEIGHTED:
 			s5k4ec_I2C_write(s5k4ec_metering_center_weighted);
+			str = "Center Weighted";
+			break;
+		case CAMERA_AE_SPOT_METERING:
+			s5k4ec_I2C_write(s5k4ec_metering_spot);
+			str = "Spot";
 			break;
 	}
 
-	SENSOR_PRINT_HIGH(
-		"Apply %s Metering mode ",
-		0 == metering_mode ? "Matrix" :
-		1 == metering_mode ? "Spot" :
-		"Center Weighted"
-	);
+	SENSOR_PRINT_HIGH("Apply %s Metering mode ", str);
 	s_metering_mode = metering_mode;
 
-	return 0;
+	return SENSOR_SUCCESS;
 }
 
 LOCAL uint32_t s5k4ec_set_sharpness(uint32_t level)
 {
-	if(level >= 8) {
+	if(level >= 7) {
 		SENSOR_PRINT_ERR("Undefined Sharpness level %u", level);
 		return SENSOR_OP_PARAM_ERR;
 	}
 
 	SENSOR_PRINT_HIGH("Apply Sharpness level %u", level);
-	s5k4ec_I2C_write((SENSOR_REG_T*) s5k4ec_saturation_tab[level]);
 
-	return 0;
+	switch(level) {
+	case 0:
+		s5k4ec_I2C_write(s5k4ec_sharpness_minus_3);
+		break;
+	case 1:
+		s5k4ec_I2C_write(s5k4ec_sharpness_minus_2);
+		break;
+	case 2:
+		s5k4ec_I2C_write(s5k4ec_sharpness_minus_1);
+		break;
+	case 4:
+		s5k4ec_I2C_write(s5k4ec_sharpness_plus_1);
+		break;
+	case 5:
+		s5k4ec_I2C_write(s5k4ec_sharpness_plus_2);
+		break;
+	case 6:
+		s5k4ec_I2C_write(s5k4ec_sharpness_plus_3);
+		break;
+	default:
+	case 3:
+		s5k4ec_I2C_write(s5k4ec_sharpness_default);
+		break;
+	}
+
+	s_sharpness_lvl = (int32_t) level;
+	return SENSOR_SUCCESS;
 
 }
 
@@ -1649,15 +2059,13 @@ LOCAL uint32_t s5k4ec_lightcheck()
 	uint16_t low_word = 0;
 	uint16_t high_word = 0;
 
-
 	Sensor_WriteReg(0xFCFC,0xD000);
 	Sensor_WriteReg(0x002C, 0x7000);
 	Sensor_WriteReg(0x002E, 0x2C18);
 	low_word = Sensor_ReadReg(0x0F12);
-	Sensor_WriteReg(0x002E, 0x2C1A);
 	high_word = Sensor_ReadReg(0x0F12);
 
-	SENSOR_PRINT_HIGH("Luminance results high=%x low=%x", low_word, high_word);
+	SENSOR_PRINT_HIGH("Luminance results high=%x low=%x", high_word, low_word);
 
 	return low_word | (high_word <<16);
 
@@ -1666,13 +2074,14 @@ LOCAL uint32_t s5k4ec_lightcheck()
 LOCAL uint32_t s5k4ec_flash(uint32_t param)
 {
 	uint32_t *autoflash = (uint32_t *)param;
+	struct camera_context *cxt = camera_get_cxt();
 	uint32_t lux;
 
 	SENSOR_PRINT_HIGH("Start");
 
 	lux = s5k4ec_lightcheck();
 	if (LIGHT_STATUS_IS_LOW(lux)) {
-		SENSOR_PRINT_HIGH("Low light, using flash");
+		SENSOR_PRINT_HIGH("Low light, may use flash");
 		(*autoflash) = 1;
 	} else {
 		SENSOR_PRINT_HIGH("Normal light levels, not using flash");
@@ -1685,37 +2094,43 @@ LOCAL uint32_t s5k4ec_flash(uint32_t param)
 
 LOCAL uint32_t s5k4ec_get_ISO_rate(void)
 {
-	uint16_t iso_a_gain= 0;
-	uint16_t iso_d_gain= 0;
+	uint16_t iso_a_gain = 0;
+	uint16_t iso_d_gain = 0;
 	uint32_t iso_gain, iso_rate;
 
 	SENSOR_PRINT_HIGH("Get ISO gain");
 
+	// These registers output a fixed point number, 8.8 format
 	Sensor_WriteReg(0x002C, 0x7000);
 	Sensor_WriteReg(0x002E, 0x2BC4);
-	iso_a_gain = Sensor_ReadReg(0x00F12);
-	// Sensor_WriteReg(0x002E, 0x2BC6);
-	iso_d_gain = Sensor_ReadReg(0x00F12);
+	iso_a_gain = Sensor_ReadReg(0x00F12); // Mon_AAIO_PrevAcqCtxt_ME_AGain
+	iso_d_gain = Sensor_ReadReg(0x00F12); // Mon_AAIO_PrevAcqCtxt_ME_DGain
 
-	iso_gain = (iso_a_gain * iso_d_gain) / 384 /*200*/;
+
+	iso_gain = (iso_a_gain * iso_d_gain) / 400 /*384*/ /*200*/;
+
+	if (!iso_gain) {
+		SENSOR_PRINT_ERR("Failed. [ISO rate: 50 gain: %u]", iso_gain);
+		return 50;
+	}
 
 	/* Convert ISO value */
-	if(iso_gain > 0x400)
+	if(iso_gain > 0x400) {
 		iso_rate = 400;
-	else if(iso_gain > 0x200)
+	} else if(iso_gain > 0x200) {
 		iso_rate = 200;
-	else if(iso_gain > 0x100)
+	} else if(iso_gain > 0x100) {
 		iso_rate = 100;
-	else
+	} else {
 		iso_rate = 50;
+	}
 
+	SENSOR_PRINT_ERR("Analog gain: %f Digital Gain: %f]", (float) iso_a_gain/256, (float) iso_d_gain/256);
+	SENSOR_PRINT_ERR("Multiplied Gain: %f]", (float)(iso_a_gain * iso_d_gain) / (65536));
+	SENSOR_PRINT_ERR("Effective ISO value: %f, Sensor ISO value: %f", ((float)(iso_a_gain * iso_d_gain) / (65536)) * 50, ((float)iso_a_gain/256) * 50);
 
-	if (!iso_gain)
-		SENSOR_PRINT_ERR("Failed. [ISO rate:%u gain: %u]", iso_rate, iso_gain);
-	else
-		SENSOR_PRINT_HIGH("Done. [ISO rate:%u gain: %u]", iso_rate, iso_gain);
-
-	return iso_rate;
+	SENSOR_PRINT_HIGH("Done. [Simplified ISO rate:%u A*Dgain: %u]", iso_rate, iso_gain);
+	return ((iso_a_gain * iso_d_gain * 50) / (65536));
 }
 
 LOCAL uint32_t s5k4ec_get_shutter_speed(void)
@@ -1727,11 +2142,8 @@ LOCAL uint32_t s5k4ec_get_shutter_speed(void)
 
 	Sensor_WriteReg(0xFCFC, 0xD000);
 	Sensor_WriteReg(0x002C, 0x7000);
-
 	Sensor_WriteReg(0x002E, 0x2BC0);
 	lsb = Sensor_ReadReg(0x00F12);
-
-	Sensor_WriteReg(0x002E, 0x2BC2);
 	msb = Sensor_ReadReg(0x00F12);
 
 	/*
@@ -1739,27 +2151,21 @@ LOCAL uint32_t s5k4ec_get_shutter_speed(void)
 	 * x = ((msb << 16) | lsb) / 400
 	 * shutter_speed = 1000 / x
 	 */
-	exposure_time = (msb << 16) | lsb;
+	exposure_time = ((msb << 16) | lsb);
 
 	if (!exposure_time) {
 		SENSOR_PRINT_HIGH("Failed, sensor values are 0");
 		return 0;
-	} else {
-		exposure_time = 400000 / exposure_time;
-		if (!exposure_time) {
-			SENSOR_PRINT_HIGH("exposure time still results to 0");
-			exposure_time = 1;
-		}
 	}
 
-	SENSOR_PRINT_HIGH("Done. [Shutter Speed : %u]", exposure_time);
+	SENSOR_PRINT_HIGH("Done. Shutter Speed : %u [1/400 msec] (%f msec)", exposure_time, (float)exposure_time/400);
 	return exposure_time;
 }
 
 LOCAL uint16_t s5k4ecgx_get_frame_time()
 {
 	uint16_t frame_time = 0;
-	uint16_t temp1 = 0;
+	uint16_t msb, lsb;
 	int err;
 
 	SENSOR_PRINT_HIGH("Start");
@@ -1768,10 +2174,12 @@ LOCAL uint16_t s5k4ecgx_get_frame_time()
 	Sensor_WriteReg(0x002C, 0x7000);
 
 	Sensor_WriteReg(0x002E, 0x2128);
-	temp1 = Sensor_ReadReg (0x0F12);
+	lsb = Sensor_ReadReg (0x0F12);
+	msb = Sensor_ReadReg (0x0F12);
 
-	frame_time = temp1/400;
+	frame_time = (lsb | (msb << 16)) / 400;
 
+	SENSOR_PRINT_HIGH("Done. [Frame Time: lsb 0x%02X msb 0x%02X]", lsb , msb);
 	SENSOR_PRINT_HIGH("Done. [Frame Time: %u]",frame_time);
 
 	return frame_time;
@@ -1790,26 +2198,60 @@ LOCAL uint32_t __s5k4ecgx_set_focus_mode(uint32_t mode)
 
 	delay = s5k4ecgx_get_frame_time();
 
-	if (2 == mode) { //Macro
+	if ((mode != s_focus_mode) && ((s_focus_mode != 5) || (s_focus_mode != 4)))
+		s5k4ec_I2C_write(s5k4ec_AF_revert_continuous_mode);
+
+
+	switch(mode) {
+	case 2: // Macro
+		// Cancel CAF first
+		if ((s_focus_mode != 5) || (s_focus_mode != 4)) {
+			s5k4ec_I2C_write(s5k4ec_AF_normal_mode_2);
+			SENSOR_Sleep(delay);
+		}
+
 		s5k4ec_I2C_write(s5k4ec_AF_macro_mode_1);
 		SENSOR_Sleep(delay);
 
 		s5k4ec_I2C_write(s5k4ec_AF_macro_mode_2);
 		SENSOR_Sleep(delay);
 
-		s5k4ec_I2C_write(s5k4ec_AF_macro_mode_3);
-// 	} else if (3 == mode) { // Infinity
-// 		s5k4ec_I2C_write(s5k4ec_AF_return_inf_pos);
-	} else { // Auto and every other else
+		if (s_cur_scene != CAMERA_SCENE_MODE_NIGHT)
+			s5k4ec_I2C_write(s5k4ec_AF_macro_mode_3);
+		break;
+	case 3: // Infinity
+		s5k4ec_I2C_write(s5k4ec_AF_off_1);
+		break;
+	case 5: // Continuous AF for video
+		// Reset AF Window
+		_s5k4ecgx_reset_focus_touch_position();
+		/* Fall-through */
+	case 4: // Continuous AF for picture
+		s5k4ec_I2C_write(s5k4ec_AF_continuous_mode_1);
+		SENSOR_Sleep(delay);
+
+		if (s_cur_scene != CAMERA_SCENE_MODE_NIGHT)
+			s5k4ec_I2C_write(s5k4ec_AF_continuous_mode_2);
+
+		s5k4ec_I2C_write(s5k4ec_continuous_AF_start);
+		SENSOR_Sleep(2 * delay);
+
+		break;
+	// For everything else, use the normal AF
+	default:
 		s5k4ec_I2C_write(s5k4ec_AF_normal_mode_1);
 		SENSOR_Sleep(delay);
 
 		s5k4ec_I2C_write(s5k4ec_AF_normal_mode_2);
 		SENSOR_Sleep(delay);
 
-		s5k4ec_I2C_write(s5k4ec_AF_normal_mode_3);
+		if (s_cur_scene != CAMERA_SCENE_MODE_NIGHT)
+			s5k4ec_I2C_write(s5k4ec_AF_normal_mode_3);
+		break;
 	}
-	return 0;
+
+	s_focus_mode = mode;
+	return SENSOR_SUCCESS;
 }
 
 LOCAL uint32_t s5k4ecgx_set_focus_mode(uint32_t mode)
@@ -1852,11 +2294,15 @@ LOCAL uint32_t s5k4ec_wait_until_ae_stable()
 			}
 
 			SENSOR_PRINT_HIGH("Recheck AE status: %u, expected %d", reg_value, ph);
-			SENSOR_Sleep(10);
+
+			if (s_fast_ae_en)
+				SENSOR_Sleep(1);
+			else
+				SENSOR_Sleep(10);
 		}
 	}
 	SENSOR_PRINT_HIGH("Done.");
-	return 0;
+	return SENSOR_SUCCESS;
 }
 
 LOCAL uint32_t s5k4ec_preflash_af(uint32_t on)
@@ -1867,7 +2313,7 @@ LOCAL uint32_t s5k4ec_preflash_af(uint32_t on)
 	else
 		s5k4ec_I2C_write(s5k4ec_pre_flash_Off);
 
-	return 0;
+	return SENSOR_SUCCESS;
 }
 
 LOCAL uint32_t s5k4ecgx_fast_ae(uint32_t on)
@@ -1877,8 +2323,9 @@ LOCAL uint32_t s5k4ecgx_fast_ae(uint32_t on)
 		s5k4ec_I2C_write(s5k4ec_FAST_AE_On);
 	else
 		s5k4ec_I2C_write(s5k4ec_FAST_AE_Off);
+	s_fast_ae_en = on;
 
-	return 0;
+	return SENSOR_SUCCESS;
 }
 
 LOCAL uint32_t s5k4ec_main_flash(uint32_t on)
@@ -1892,6 +2339,16 @@ LOCAL uint32_t s5k4ec_main_flash(uint32_t on)
 	return SENSOR_SUCCESS;
 }
 
+/*
+ * Low light AF - Reduce AF lens posiiton table
+ * The AF algorithm requires a number of the actual preview frames
+ * to compute its sharpness statistics.
+ * On low light conditions, preview framerate tends to be reduced,
+ * thus causing a longer AF search time.
+ *
+ * Low light AF will almost halve the table which should give
+ * some considerable speed up on the aforementioned scenario.
+ */
 LOCAL uint32_t s5k4ec_low_light_AF_check(void)
 {
 	struct camera_context *cxt = camera_get_cxt();
@@ -1900,29 +2357,41 @@ LOCAL uint32_t s5k4ec_low_light_AF_check(void)
 
 	SENSOR_PRINT_HIGH("Decide whether to use low light AF or not");
 
-	/*
-	 * The conditions for low light AF is that the conditions
-	 * are considered low light and Flash is will never be used
-	 */
-	if ((flash_mode == FLASH_CLOSE) && LIGHT_STATUS_IS_LOW(s5k4ec_lightcheck())) {
-		use_ll_af = 1;
-		SENSOR_PRINT_HIGH("Using low light autofocus");
-	} else {
-		use_ll_af = 0;
-		SENSOR_PRINT_HIGH("Not using low light autofocus");
-	}
-
-	if (use_ll_af == s_using_low_light_af) {
-		SENSOR_PRINT_HIGH("Sensor already%s using Low light autofocus",
-			use_ll_af ? "" : " not"
-		);
+	if (s_cur_scene == CAMERA_SCENE_MODE_NIGHT) {
+		SENSOR_PRINT_HIGH("Night Scene mode only uses low light AF.");
 		return SENSOR_SUCCESS;
 	}
 
-	if (use_ll_af)
-		s5k4ec_I2C_write(s5k4ec_AF_low_light_mode_On);
+	if ((flash_mode == FLASH_CLOSE) && (s5k4ecgx_get_frame_time() > 67))
+		use_ll_af = 1;
 	else
-		s5k4ec_I2C_write(s5k4ec_AF_low_light_mode_Off);
+		use_ll_af = 0;
+
+	if (use_ll_af == s_using_low_light_af) {
+		SENSOR_PRINT_HIGH(
+			"Sensor already%s using Low light autofocus",
+			use_ll_af ? "" : " not"
+		);
+		return SENSOR_SUCCESS;
+	} else {
+		SENSOR_PRINT_HIGH("Will %s low light autofocus", use_ll_af ? "apply" : "revert");
+	}
+
+	if (use_ll_af) {
+		s5k4ec_I2C_write(s5k4ec_AF_low_light_mode_On);
+
+		// Reverse the direction when on Macro mode
+		if (s_focus_mode == 2) // Macro
+			s5k4ec_I2C_write(s5k4ec_AF_low_light_macro_mode);
+	} else {
+		if (s_focus_mode == 2) { // Macro
+			s5k4ec_I2C_write(s5k4ec_AF_macro_mode_3);
+		} else if ((s_focus_mode == 5) || (s_focus_mode == 4)) { // CAF
+			s5k4ec_I2C_write(s5k4ec_AF_continuous_mode_2);
+		} else { // Normal AF
+			s5k4ec_I2C_write(s5k4ec_AF_normal_mode_3);
+		}
+	}
 
 	SENSOR_PRINT_HIGH("Done.");
 	return SENSOR_SUCCESS;
@@ -1932,36 +2401,34 @@ LOCAL uint32_t s5k4ec_set_FPS_mode(uint32_t fps_mode)
 {
 	SENSOR_PRINT_HIGH("Apply FPS mode %d", fps_mode);
 
-	if (s_fps_cur_max == fps_mode) {
-		SENSOR_PRINT_HIGH("Already applied");
-		return SENSOR_SUCCESS;
-	}
-
 	switch(fps_mode) {
-		case 0:
-			s5k4ec_I2C_write(s5k4ec_Auto30_FPS);
-			break;
-		case 1:
-			s5k4ec_I2C_write(s5k4ec_7_FPS);
-			break;
-		case 2:
-			s5k4ec_I2C_write(s5k4ec_12_FPS);
-			break;
-		case 3:
-			s5k4ec_I2C_write(s5k4ec_15_FPS);
-			break;
-		case 4:
-			s5k4ec_I2C_write(s5k4ec_30_FPS);
-			break;
-		case 5:
-			s5k4ec_I2C_write(s5k4ec_25_FPS);
-			break;
-		default:
-			SENSOR_PRINT_ERR("Undefined FPS mode %u", fps_mode);
-			return SENSOR_FAIL;
+	case FPS_MODE_AUTO:
+		s5k4ec_I2C_write(s5k4ec_Auto30_FPS);
+		break;
+	case FPS_MODE_7:
+		s5k4ec_I2C_write(s5k4ec_7_FPS);
+		break;
+	case FPS_MODE_12:
+		s5k4ec_I2C_write(s5k4ec_12_FPS);
+		break;
+	case FPS_MODE_15:
+		s5k4ec_I2C_write(s5k4ec_15_FPS);
+		break;
+	case FPS_MODE_24:
+		s5k4ec_I2C_write(s5k4ec_24_FPS);
+		break;
+	case FPS_MODE_25:
+		s5k4ec_I2C_write(s5k4ec_25_FPS);
+		break;
+	case FPS_MODE_30:
+		s5k4ec_I2C_write(s5k4ec_30_FPS);
+		break;
+	default:
+		SENSOR_PRINT_ERR("Undefined FPS mode %u", fps_mode);
+		return SENSOR_FAIL;
 	}
-	s_fps_cur_max = fps_mode;
-	SENSOR_Sleep(5);
+	s_fps_cur_mode = fps_mode;
+
 	return SENSOR_SUCCESS;
 }
 
@@ -1970,20 +2437,170 @@ LOCAL uint32_t s5k4ec_set_FPS(uint32_t fps)
 	uint32_t mode;
 
 	if (0 == fps) { /* Auto FPS */
-		mode = 0;
+		mode = FPS_MODE_AUTO;
 	} else if (7 >= fps) {
-		mode = 1;
+		mode = FPS_MODE_7;
 	} else if (12 >= fps) {
-		mode = 2;
+		mode = FPS_MODE_12;
 	} else if (15 >= fps) {
-		mode = 3;
+		mode = FPS_MODE_15;
+	} else if (24 >= fps) {
+		mode = FPS_MODE_24;
 	} else if (25 >= fps) {
-		mode = 4;
+		mode = FPS_MODE_25;
 	} else if (30 >= fps) {
-		mode = 5;
+		mode = FPS_MODE_30;
 	} else {
-		mode = 64; /* An invalid mode */
+		SENSOR_PRINT_HIGH("Unsupported fps %u", fps);
+		mode = FPS_MODE_INVALID; /* An invalid mode */
 	}
 
 	return s5k4ec_set_FPS_mode(mode);
 }
+
+LOCAL uint32_t s5k4ec_set_manual_FPS(uint32_t min, uint32_t max)
+{
+	uint16_t FrRateQualityType;
+	static SENSOR_REG_T manual_setting[] = {
+		{0x0028, 0x7000},
+
+		{0x002A, 0x02BE},
+		{0x0F12, 0x0000},
+		{0x0F12, 0x0000}, //3
+		{0x0F12, 0x0000}, //4
+		{0x0F12, 0x0000}, //5
+
+		{0x002A, 0x0266},
+		{0x0F12, 0x0000},
+		{0x002A, 0x026A},
+		{0x0F12, 0x0001},
+		{0x002A, 0x024E},
+		{0x0F12, 0x0001},
+		{0x002A, 0x0268},
+		{0x0F12, 0x0001},
+		{0xFFFF, 0xFFFF},
+	};
+
+	SENSOR_PRINT_ERR("Max:%u Min:%u", max, min);
+
+	if ((30 < max) || (30 > min) || (min > max)) {
+		SENSOR_PRINT_ERR("Invalid options passed.");
+		return -1;
+	}
+
+	if (min == max)
+		FrRateQualityType = 1;
+	else
+		FrRateQualityType = 0;
+
+	manual_setting[3].reg_value = FrRateQualityType;
+	manual_setting[4].reg_value = max;
+	manual_setting[5].reg_value = min;
+
+	s5k4ec_I2C_write(manual_setting);
+
+	s_fps_cur_mode = FPS_MODE_MANUAL;
+	return SENSOR_SUCCESS;
+}
+
+LOCAL void s5k4ec_set_REG_TC_DBG_AutoAlgEnBits(int bit, int set)
+{
+	uint16_t REG_TC_DBG_AutoAlgEnBits = 0;
+	static SENSOR_REG_T reg_set[] = {
+		{0xFCFC, 0xD000},
+		{0x0028, 0x7000},
+		{0x002A, 0x04E6},
+		{0x0F12, 0x077F},// 3
+		{0xFFFF, 0xFFFF},
+	};
+
+	Sensor_WriteReg(0x002C, 0x7000);
+	Sensor_WriteReg(0x002E, 0x04E6);
+	REG_TC_DBG_AutoAlgEnBits = Sensor_ReadReg(0x0F12);
+
+	SENSOR_PRINT_HIGH ("REG_TC_DBG_AutoAlgEnBits before: 0x%X", REG_TC_DBG_AutoAlgEnBits);
+	if (set) {
+		if (REG_TC_DBG_AutoAlgEnBits & (1 << bit)) {
+			SENSOR_PRINT_HIGH ("No need to set");
+			return;
+		}
+
+		REG_TC_DBG_AutoAlgEnBits |= (1 << bit);
+	} else {
+		if (!(REG_TC_DBG_AutoAlgEnBits & (1 << bit))) {
+			SENSOR_PRINT_HIGH ("No need to unset");
+			return;
+		}
+
+		REG_TC_DBG_AutoAlgEnBits &= ~(1 << bit);
+	}
+	reg_set[3].reg_value = REG_TC_DBG_AutoAlgEnBits;
+
+	SENSOR_PRINT_HIGH ("REG_TC_DBG_AutoAlgEnBits after: 0x%X", REG_TC_DBG_AutoAlgEnBits);
+
+	s5k4ec_I2C_write(reg_set);
+	return;
+}
+
+#ifdef WA_BOOST_DDR_FREQ_720P
+LOCAL int8_t s5k4ec_ddr_is_slow(int8_t boost) {
+	/*
+	 * We could do two things as a workaround:
+	 * 1. Disable DFS and clamp to the highest frequency using set_freq
+	 * 2. Tweak the thresholds using set_upthreshold
+	 *    of SPRD's ondemand governor to make it
+	 *    more sensitive to load changes.
+	 * #1 is the simplest but have the tendency to clamp it there
+	 * forever until someone fixes it, when an error occurs.
+	 * #2 on errors, will still have the DFS on and may
+	 * still scale down. It's just more likely to scale up.
+	 *
+	 * I'll use the #2.
+	 */
+	// const char* const set_freq = "/sys/devices/platform/scxx30-dmcfreq.0/devfreq/scxx30-dmcfreq.0/ondemand/set_freq";
+	const char* const set_upthreshold = "/sys/class/devfreq/scxx30-dmcfreq.0/ondemand/set_upthreshold";
+	const char* const threshold = "50";
+
+	static char prev_thresh[5] = {0};
+	int ret;
+	FILE* fp;
+
+	SENSOR_PRINT_HIGH("boost=%d", boost);
+
+	if (s_ddr_boosted == boost)
+		return 0;
+
+	SENSOR_PRINT_HIGH("Open file %s", set_upthreshold);
+	if (!(fp = fopen(set_upthreshold, "r+"))) {
+		SENSOR_PRINT_ERR("Failed to open %s", set_upthreshold);
+		return -1;
+	}
+
+	// method #1
+	// fprintf(fp, "%d", boost ? 500000: 0); //one-liner
+
+	//method #2
+	if (boost) {
+		prev_thresh[0] = 0;
+		if (fgets(prev_thresh, 5 /*sizeof(prev_thresh)*/, fp)) {
+			ret = fprintf(fp, "%s", threshold);
+		} else {
+			SENSOR_PRINT_ERR("Error reading file: %s", strerror(errno));
+			ret = -1;
+			goto close_file;
+		}
+	} else {
+		ret = fprintf(fp, "%s", prev_thresh);
+	}
+
+	if (ret < 0) {
+		SENSOR_PRINT_HIGH("Error writing to file: %s", strerror(errno));
+	} else {
+		s_ddr_boosted = boost;
+	}
+
+close_file:
+	fclose(fp);
+	return ret;
+}
+#endif

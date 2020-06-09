@@ -37,6 +37,10 @@ enum {
 	CAMERA_EFFECT_YELLOW,
 	CAMERA_EFFECT_NEGATIVE,
 	CAMERA_EFFECT_SEPIA,
+#ifdef CONFIG_CAMERA_KANAS
+	CAMERA_EFFECT_AQUA,
+	CAMERA_EFFECT_SKETCH,
+#endif
 	CAMERA_EFFECT_MAX
 };
 
@@ -169,6 +173,7 @@ enum {
 #ifdef CONFIG_CAMERA_KANAS
 	CAMERA_ISO_50,
 	CAMERA_ISO_300,
+	CAMERA_ISO_600,
 #endif
 	CAMERA_ISO_MAX
 };
@@ -261,6 +266,8 @@ const struct str_map effect_map[] = {
 	{"green-tint",      CAMERA_EFFECT_GREEN},
 	{"blue-tint",       CAMERA_EFFECT_BLUE},
 	{"solarize",        CAMERA_EFFECT_YELLOW},
+	{"aqua",            CAMERA_EFFECT_AQUA},
+	{"sketch",          CAMERA_EFFECT_SKETCH},
 #endif
 	{NULL,              0}
 };
@@ -283,7 +290,7 @@ const struct str_map scene_mode_map[] = {
 	{"text",            CAMERA_SCENE_MODE_TEXT},
 	{"candlelight",     CAMERA_SCENE_MODE_CANDLELIGHT},
 	{"firework",        CAMERA_SCENE_MODE_FIREWORK},
-	{"back-light",       CAMERA_SCENE_MODE_BACKLIGHT},
+	{"back-light",      CAMERA_SCENE_MODE_BACKLIGHT},
 #endif
 	{NULL,              0}
 };
@@ -360,6 +367,7 @@ const struct str_map iso_map[] = {
 #ifdef CONFIG_CAMERA_KANAS
 	{"50",              CAMERA_ISO_50},
 	{"300",             CAMERA_ISO_300},
+	{"600",             CAMERA_ISO_600},
 #endif
 	{NULL,              0}
 };
@@ -600,7 +608,7 @@ struct config_element sprd_back_camera_hardware_config[] = {
 	{"preview-size", "640x480"},
 #else
 #ifdef CONFIG_CAMERA_KANAS
-	{"preview-size-values", "1280x960,1280x720,960x540,720x540,800x480,720x480,640x480,352x288,320x240,176x144"},
+	{"preview-size-values", "1280x960,1280x720,1024x768,960x540,720x540,800x480,720x480,640x480,352x288,320x240,176x144"},
 	{"preview-size", "800x480"},
 #else
 	{"preview-size-values", "1920x1088,1280x960,1280x720,960x540,720x540,720x480,640x480,352x288,320x240,176x144"},
@@ -637,7 +645,7 @@ struct config_element sprd_back_camera_hardware_config[] = {
 	{"jpeg-thumbnail-height", "480"},
 	{"jpeg-thumbnail-quality", "70"},
 #ifdef CONFIG_CAMERA_KANAS
-	{"effect-values", "none,mono,red-tint,green-tint,blue-tint,negative,sepia,solarize"},
+	{"effect-values", "none,mono,red-tint,green-tint,blue-tint,negative,sepia,solarize,aqua,sketch"},
 #else
     {"effect-values", "none,mono,negative,sepia,cold,antique"},
 #endif
@@ -675,7 +683,7 @@ struct config_element sprd_back_camera_hardware_config[] = {
 	{"sharpness", "3"},
 #endif
 #ifndef CONFIG_CAMERA_AUTOFOCUS_NOT_SUPPORT
-#if	defined(CONFIG_CAMERA_CAF)
+#if	defined(CONFIG_CAMERA_CAF) || defined(CONFIG_CAMERA_KANAS)
 	{"focus-mode-values", "auto,macro,continuous-picture,continuous-video,infinity"},
 	{"focus-mode", "auto"},
 #else
@@ -683,7 +691,11 @@ struct config_element sprd_back_camera_hardware_config[] = {
 	{"focus-mode", "auto"},
 #endif
 	{"focus-distances", "2.0,2.5,Infinity"},
+#if defined(CONFIG_CAMERA_KANAS)
+	{"max-num-focus-areas", "1"},
+#else
 	{"max-num-focus-areas", "3"},
+#endif
 #else
 	{"focus-mode-values", "infinity"},
 	{"focus-mode", "infinity"},
@@ -694,7 +706,11 @@ struct config_element sprd_back_camera_hardware_config[] = {
 	{"max-exposure-compensation", "3"},
 	{"exposure-compensation","0"},
 	{"exposure-compensation-step", "1"},
+#ifdef CONFIG_CAMERA_KANAS
+	{"antibanding-values","50hz,60hz,off,auto"},
+#else
 	{"antibanding-values","50hz,60hz"},
+#endif
 	{"antibanding","50hz"},
 	{"antibanding-supported","true"},
 #ifdef CONFIG_CAMERA_KANAS
@@ -725,7 +741,7 @@ struct config_element sprd_back_camera_hardware_config[] = {
 	{"iso-supported", "true"},
 	{"max-iso", "5"},
 #ifdef CONFIG_CAMERA_KANAS
-	{"iso-values", "auto,50,100,200,300,400"},
+	{"iso-values", "auto,50,100,200,300,400,600,800"},
 #else
 	{"iso-values", "auto,50,100,200,400,800,1600"},
 #endif
@@ -749,7 +765,11 @@ struct config_element sprd_back_camera_hardware_config[] = {
 #else
 	{"max-num-metering-areas", "0"},
 #endif
+#ifdef CONFIG_CAMERA_KANAS
+	{"auto-exposure","center-weighted"},
+#else
 	{"auto-exposure","frame-average"},
+#endif
 	{"auto-exposure-values", "frame-average,center-weighted,spot-metering"},
 	{"preview-env","0"},
 #if  defined(CONFIG_CAMERA_ZSL_CAPTURE)

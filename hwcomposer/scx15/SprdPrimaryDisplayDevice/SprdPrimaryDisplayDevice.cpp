@@ -53,7 +53,8 @@ SprdPrimaryDisplayDevice:: SprdPrimaryDisplayDevice()
      mPostFrameBuffer(true),
      mHWCDisplayFlag(HWC_DISPLAY_MASK),
      mDebugFlag(0),
-     mDumpFlag(0)
+     mDumpFlag(0),
+     mVsyncEnabled(false)
     {
 
     }
@@ -780,6 +781,11 @@ void SprdPrimaryDisplayDevice:: eventControl(int enabled)
         ALOGE("getVsyncEventHandle failed");
         return;
     }
-
+    mVsyncEnabled = enabled;
     VE->setEnabled(enabled);
+}
+
+bool SprdPrimaryDisplayDevice:: isVsyncEnabled()
+{
+    return mVsyncEnabled;
 }

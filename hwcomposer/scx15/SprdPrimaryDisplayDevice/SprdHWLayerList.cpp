@@ -350,12 +350,13 @@ int SprdHWLayerList:: revisitGeometry(int *DisplayFlag, SprdPrimaryDisplayDevice
         if ((mFBLayerCount) || // RGB Layers plus some layers handled by SF
 #ifdef GSP_MAX_OSD_LAYERS
             (mOSDLayerCount > mGspLimit) || // Above the arbitrary RGB layers limit
-            (YUVLayer && YUVIndex && (mOSDLayerCount >= mGspLimit)) // A YUV layer and it's not at the bottom
+            (YUVLayer && YUVIndex && (mOSDLayerCount >= mGspLimit)) || // A YUV layer and it's not at the bottom
+            (mPrimary->isVsyncEnabled() == false) // Vsync is Off
 #else
             // A YUV layer and a RGB layer but GSP won't be used to blend them
             (supportYUVLayerCond == false)
 #endif
-	){
+        ){
             resetOverlayFlag(mOSDLayerList[i]);
             mFBLayerCount++;
             RGBLayer = NULL;

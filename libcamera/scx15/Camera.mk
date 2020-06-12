@@ -291,15 +291,23 @@ ifeq ($(strip $(sc8830like)),1)
 
 ifdef CONFIG_CAMERA_ISP
 include $(CLEAR_VARS)
-LOCAL_PREBUILT_LIBS := sc8830/isp/libisp.so
+LOCAL_MODULE := libisp
+LOCAL_MODULE_CLASS := SHARED_LIBRARIES
 LOCAL_MODULE_TAGS := optional
-include $(BUILD_MULTI_PREBUILT)
+LOCAL_MODULE_SUFFIX := .so
+LOCAL_SRC_FILES := sc8830/isp/libisp.so
+LOCAL_MODULE_PATH := $(TARGET_COPY_OUT_VENDOR)/lib
+include $(BUILD_PREBUILT)
 endif
 
 include $(CLEAR_VARS)
-LOCAL_PREBUILT_LIBS := arithmetic/sc8830/libmorpho_easy_hdr.so
+LOCAL_MODULE := libmorpho_easy_hdr
+LOCAL_MODULE_CLASS := SHARED_LIBRARIES
 LOCAL_MODULE_TAGS := optional
-include $(BUILD_MULTI_PREBUILT)
+LOCAL_MODULE_SUFFIX := .so
+LOCAL_SRC_FILES := arithmetic/sc8830/libmorpho_easy_hdr.so
+LOCAL_MODULE_PATH := $(TARGET_COPY_OUT_VENDOR)/lib
+include $(BUILD_PREBUILT)
 
 ifeq ($(strip $(TARGET_BOARD_CAMERA_HDR_CAPTURE)),true)
 	include $(CLEAR_VARS)

@@ -102,13 +102,17 @@ DEVICE_USE_FB_HW_VSYNC := true
 
 # Kanas/kanas3g doesn't have IOMMU so this wouldn't work.
 # Unless, the HWC buffers are physically contiguous.
-# Pardon the duplication.
+# Update: There is an issue where buffer set to be an overlay
+# is release without notifying the DISPC hardware. This causes
+# the screen to display grabage because the address is not
+# a graphics buffer anymore. Don't enable this feature
+# to avoid such visual glitches.
 ifneq ($(strip $(SOC_SCX35)),true)
 DEVICE_DIRECT_DISPLAY_SINGLE_OSD_LAYER := true
 endif
-ifeq ($(TARGET_FORCE_HWC_CONTIG), true)
-DEVICE_DIRECT_DISPLAY_SINGLE_OSD_LAYER := true
-endif
+# ifeq ($(TARGET_FORCE_HWC_CONTIG), true)
+# DEVICE_DIRECT_DISPLAY_SINGLE_OSD_LAYER := true
+# endif
 
 endif
 

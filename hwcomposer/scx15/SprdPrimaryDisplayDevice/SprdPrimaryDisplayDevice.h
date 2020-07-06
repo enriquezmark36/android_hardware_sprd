@@ -115,11 +115,6 @@ public:
      * */
     int reclaimPlaneBuffer(SprdHWLayer *YUVLayer);
 
-    /*
-     *  Returns true if Vsync is requested
-     * */
-    bool isVsyncEnabled();
-
 private:
     FrameBufferInfo   *mFBInfo;
     SprdHWLayerList   *mLayerList;
@@ -135,7 +130,6 @@ private:
     int mHWCDisplayFlag;
     int mDebugFlag;
     int mDumpFlag;
-    int mVsyncEnabled;
 
     inline SprdHWLayerList *getHWLayerList()
     {

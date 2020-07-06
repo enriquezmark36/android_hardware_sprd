@@ -53,8 +53,7 @@ SprdPrimaryDisplayDevice:: SprdPrimaryDisplayDevice()
      mPostFrameBuffer(true),
      mHWCDisplayFlag(HWC_DISPLAY_MASK),
      mDebugFlag(0),
-     mDumpFlag(0),
-     mVsyncEnabled(false)
+     mDumpFlag(0)
     {
 
     }
@@ -267,7 +266,7 @@ int SprdPrimaryDisplayDevice:: attachToDisplayPlane(int DisplayFlag)
 #define DEFAULT_ATTACH_LAYER 0
 
     bool cond = false;
-#ifdef DIRECT_DISPLAY_SINGLE_OSD_LAYER
+#if defined(DIRECT_DISPLAY_SINGLE_OSD_LAYER) || defined(GSP_MAX_OSD_LAYERS)
     cond = OSDLayerCount > 0;
 #else
     cond = OSDLayerCount > 0 && VideoLayerCount > 0;
@@ -394,6 +393,10 @@ int SprdPrimaryDisplayDevice:: commit(hwc_display_contents_1_t* list)
     private_handle_t* buffer1 = NULL;
     private_handle_t* buffer2 = NULL;
 
+    static int mCurrentBuffer = 0;
+    static bool overlaySet = false;
+    static private_handle_t *overlayHandle = NULL;
+
 #ifdef GSP_MAX_OSD_LAYERS
     int OSDLayerCount = mLayerList->getOSDLayerCount();
     SprdHWLayer **OSDLayerList = mLayerList->getSprdOSDLayerList();
@@ -446,7 +449,42 @@ int SprdPrimaryDisplayDevice:: commit(hwc_display_contents_1_t* list)
         default:
             ALOGI("Do not support display type: %d", (mHWCDisplayFlag & ~HWC_DISPLAY_MASK));
             DisplayFBTarget = true;
-            break;
+
+            /*
+             * When having an unknown type while overlay is set
+             * Copy it to the framebuffer as it is much faster and simpler
+             * to display the FB rather than overlay it which occurs
+             * every single frame within DISPC.
+             *
+             * NOTE: Writes to the FB is drastically slower (~40msec+)
+             * than reading (~4msec)it so do it in the last frame.
+             *
+             * NOTE: We won't do this for DIRECT_DISPLAY_SINGLE_OSD_LAYER
+             * since there no guarantee that the buffer still exists by the time
+             * we execution gets here.
+             *
+             * NOTE: We also won't do this for the IMG overlay(OverlayPlane) since
+             * that's pretty much in YUV but the FB is in RGB.
+             *
+             * TODO: Verify if this is even needed
+             * TODO: Check if we can have some layers composited in Surfaceflinger
+             * (especially those with SKIP_HWC flag applied) and still process it using GSP.
+             * GSP processes each layer about 2-4 msec and a copy is just around 3-5 msec.
+             */
+            if (overlaySet) {
+                FBTargetLayer = mLayerList->getFBTargetLayer();
+                const native_handle_t *pNativeHandle = FBTargetLayer->handle;
+                struct private_handle_t *privateH = (struct private_handle_t *)pNativeHandle;
+                int overlayPhyAddr = 0;
+                int overlaySize = NULL;
+
+                MemoryHeapIon::Get_phy_addr_from_ion(overlayHandle->share_fd, &overlayPhyAddr, &overlaySize);
+
+                memcpy((void *)privateH->base, (void *)overlayHandle->base, overlaySize);
+                overlaySet = false;
+                mCurrentBuffer = NULL; // force Overlay unset by doing a page flip
+            }
+            goto displayDone;
     }
 
 
@@ -488,7 +526,12 @@ int SprdPrimaryDisplayDevice:: commit(hwc_display_contents_1_t* list)
             privateH->flags &= ~(private_handle_t::PRIV_FLAGS_SPRD_DITHER);
         }
 #endif
-        mFBInfo->fbDev->post(mFBInfo->fbDev, privateH);
+        // Save some time by not issuing a ioctl syscall?
+        if (mCurrentBuffer != privateH->base) {
+            mFBInfo->fbDev->post(mFBInfo->fbDev, privateH);
+            mCurrentBuffer = privateH->base;
+            overlaySet = false; // silently ignore the previous buffers
+        }
 
         goto displayDone;
     }
@@ -673,6 +716,8 @@ int SprdPrimaryDisplayDevice:: commit(hwc_display_contents_1_t* list)
                 ALOGE("%s[%d],composerLayers layer[%d]incremental blend failed",__func__,__LINE__,i);
         }
 
+        overlaySet = true;
+        overlayHandle = buffer;
 // NOTE: This is a dangling `else` do not insert a statement so willy nilly.
     } else
 #endif
@@ -712,6 +757,12 @@ int SprdPrimaryDisplayDevice:: commit(hwc_display_contents_1_t* list)
         if (DisplayOverlayPlane)
         {
             DisplayPrimaryPlane = false;
+        }
+
+        // Only allow the OSD layer (PrimaryPlane) to be copied
+        if (buffer2){
+            overlayHandle = buffer2;
+            overlaySet = true;
         }
 
 #endif
@@ -781,11 +832,6 @@ void SprdPrimaryDisplayDevice:: eventControl(int enabled)
         ALOGE("getVsyncEventHandle failed");
         return;
     }
-    mVsyncEnabled = enabled;
-    VE->setEnabled(enabled);
-}
 
-bool SprdPrimaryDisplayDevice:: isVsyncEnabled()
-{
-    return mVsyncEnabled;
+    VE->setEnabled(enabled);
 }

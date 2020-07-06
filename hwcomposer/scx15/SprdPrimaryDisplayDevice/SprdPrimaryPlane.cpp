@@ -239,6 +239,13 @@ bool SprdPrimaryPlane::SetDisplayParameters(hwc_layer_1_t *AndroidLayer)
         return false;
     }
 
+    if (AndroidLayer->blending != HWC_BLENDING_NONE)
+    {
+        ALOGI_IF(mDebugFlag, "This layer may have an alpha channel that needs blending.");
+        mDirectDisplayFlag = false;
+        return false;
+    }
+
     mDisplayFormat = privateH->format;
 
     mDirectDisplayFlag = true;

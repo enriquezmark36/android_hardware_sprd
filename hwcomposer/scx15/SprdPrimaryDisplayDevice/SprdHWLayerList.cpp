@@ -98,6 +98,28 @@ void SprdHWLayerList:: HWCLayerPreCheck()
     {
         mDisableHWCFlag = false;;
     }
+
+    property_get("debug.hwc.gsp.disable", value, "0");
+    if (value[0] == '1' && value[1] == 0) {
+        mDisableGSP = true;
+    } else {
+        mDisableGSP = false;
+    }
+#ifdef PROCESS_VIDEO_DONT_USE_GSP
+    property_get("debug.hwc.gsp.video.disable", value, "1");
+    if (value[0] == '0' && value[1] == 0) {
+        mDisableGSPVideo = false;
+    } else {
+        mDisableGSPVideo = true;
+    }
+#else
+    property_get("debug.hwc.gsp.video.disable", value, "0");
+    if (value[0] == '1' && value[1] == 0) {
+        mDisableGSPVideo = true;
+    } else {
+        mDisableGSPVideo = false;
+    }
+#endif
 }
 
 bool SprdHWLayerList::IsHWCLayer(hwc_layer_1_t *AndroidLayer)
@@ -263,17 +285,19 @@ int SprdHWLayerList:: revisitGeometry(int *DisplayFlag, SprdPrimaryDisplayDevice
             continue;
         }
 
-#ifdef PROCESS_VIDEO_DONT_USE_GSP
         /*
          * At this point, OVC might not be used to blend the YUV layer
          * and the compile time flag suggests not to use GSP for YUV layer
          * blending and processing
          */
-        resetOverlayFlag(mVideoLayerList[i]);
-        mFBLayerCount++;
-        ALOGI_IF(mDebugFlag, "YUV layer ignored as per compile time flag");
-	continue;
-#else
+        if (mDisableGSPVideo) {
+            ALOGI_IF(mDebugFlag, "GSP video processing is disabled");
+
+            resetOverlayFlag(mVideoLayerList[i]);
+            mFBLayerCount++;
+            continue;
+        }
+
         /*
          *  Our Display Controller cannot handle 2 or more than 2 video layers
          *  at the same time.
@@ -287,7 +311,6 @@ int SprdHWLayerList:: revisitGeometry(int *DisplayFlag, SprdPrimaryDisplayDevice
 
         YUVLayer = mVideoLayerList[i];
         YUVIndex = YUVLayer->getLayerIndex();
-#endif
     }
 
     /*
@@ -670,6 +693,11 @@ int SprdHWLayerList:: prepareOSDLayer(SprdHWLayer *l)
     }
 #endif
 
+    if (mDisableGSP) {
+        ALOGI_IF(mDebugFlag, "prepareOSDLayer: GSP is disabled ret 0, L%d", __LINE__);
+        return 0;
+    }
+
     l->setLayerType(LAYER_OSD);
     ALOGI_IF(mDebugFlag, "prepareOSDLayer[L%d],set type OSD", __LINE__);
 
@@ -802,6 +830,11 @@ int SprdHWLayerList:: prepareVideoLayer(SprdHWLayer *l)
         ALOGI_IF(mDebugFlag,"prepareVideoLayer[%d], GSP not support one direction scaling down while the other scaling up! ret 0",__LINE__);
         return 0;
     }
+
+    if (mDisableGSP) {
+        ALOGI_IF(mDebugFlag, "prepareVideoLayer[%d]: GSP is disabled ret 0", __LINE__);
+        return 0;
+    }
 #else
     if(layer->transform == HAL_TRANSFORM_FLIP_V)
     {
@@ -815,6 +848,7 @@ int SprdHWLayerList:: prepareVideoLayer(SprdHWLayer *l)
         return 0;
     }
 #endif
+
 
     l->setLayerType(LAYER_OVERLAY);
     ALOGI_IF(mDebugFlag, "prepareVideoLayer[L%d],set type Video", __LINE__);

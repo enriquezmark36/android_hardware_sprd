@@ -82,6 +82,8 @@ public:
 #ifdef GSP_MAX_OSD_LAYERS
           mGspLimit(GSP_MAX_OSD_LAYERS),
 #endif
+          mDisableGSP(false),
+          mDisableGSPVideo(true),
           mDebugFlag(0), mDumpFlag(0)
     {
     }
@@ -166,6 +168,8 @@ private:
 #ifdef GSP_MAX_OSD_LAYERS
     int mGspLimit;
 #endif
+    bool mDisableGSP;
+    bool mDisableGSPVideo;
     int mDebugFlag;
     int mDumpFlag;
 

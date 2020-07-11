@@ -468,10 +468,10 @@ GSP_LAYER_SRC_DATA_FMT_E SprdUtil::formatType_convert(int format)
 
         case HAL_PIXEL_FORMAT_RGBA_8888:
         case HAL_PIXEL_FORMAT_BGRA_8888:
-            return GSP_SRC_FMT_ARGB888;//?
+            return GSP_SRC_FMT_ARGB888;
 
         case HAL_PIXEL_FORMAT_RGBX_8888:
-            return GSP_SRC_FMT_RGB888;//?
+            return GSP_SRC_FMT_RGB888;
 
         case HAL_PIXEL_FORMAT_RGB_565:
             return GSP_SRC_FMT_RGB565;
@@ -629,6 +629,17 @@ int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t*
 
             //config Video ,use GSP L0
             gsp_cfg_info.layer0_info.img_format = formatType_convert(private_h1->format);
+
+            /*
+             * Enforce the RGBX format when we will not use any blending
+             * Each pixel will still use 4 bytes but we need to tell GSP to
+             * ignore the byte holding the Alpha channel or else we might
+             * have completely transparent layer.
+             */
+            if ((layer1->blending == HWC_BLENDING_NONE) &&
+                (gsp_cfg_info.layer0_info.img_format == GSP_SRC_FMT_ARGB888))
+                gsp_cfg_info.layer0_info.img_format =  GSP_SRC_FMT_RGB888;
+
             if (gsp_cfg_info.layer0_info.img_format == GSP_SRC_FMT_MAX_NUM) {
                 ALOGE("SprdUtil::composerLayers[%d], layer1 format %d not supported",__LINE__,private_h1->format);
                 return -1;
@@ -681,10 +692,15 @@ int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t*
             gsp_cfg_info.layer0_info.des_rect.rect_h = FBRect1->h;
             gsp_cfg_info.layer0_info.alpha = layer1->planeAlpha;
 
-            // XXXX: I have not seen a video layer that had HWC_BLENDING_PREMULT set.
-            // So, this line below is untested.
-            gsp_cfg_info.layer0_info.pmargb_mod = 1;
-
+            if (layer1->blending != HWC_BLENDING_NONE) {
+                gsp_cfg_info.layer0_info.pmargb_en = 1;
+                if (layer1->blending == HWC_BLENDING_PREMULT)
+                    gsp_cfg_info.layer0_info.pmargb_mod = 1;
+                else
+                    gsp_cfg_info.layer0_info.pmargb_mod = 0;
+            } else {
+                gsp_cfg_info.layer0_info.pmargb_en = 0;
+            }
 
             gsp_cfg_info.layer0_info.rot_angle = rotationType_convert(layer1->transform);
 
@@ -842,6 +858,15 @@ int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t*
                 return -1;
             }
 
+            /*
+             * Same reason with layer1/GSPLayer0 that we need to coerce the RGBX format
+             * to prevent misinterpreting the alpha channel (which is usually at 255
+             * on the RGBX format, but there is no guarantee that it's actually at 255)
+             */
+            if ((layer2->blending == HWC_BLENDING_NONE) &&
+                (gsp_cfg_info.layer1_info.img_format == GSP_SRC_FMT_ARGB888))
+                gsp_cfg_info.layer1_info.img_format = GSP_SRC_FMT_RGB888;
+
             switch(layer2_Format) {
             case HAL_PIXEL_FORMAT_RGB_565:
                 /*
@@ -922,9 +947,14 @@ int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t*
              *   1 - ONE, ONE_MINUS_SRC_ALPHA (HWC_BLENDING_PREMULT)
              * NOTE: We usually use the HWC_BLENDING_PREMULT.
              */
-            if (layer2->blending == HWC_BLENDING_PREMULT) {
+            if (layer2->blending != HWC_BLENDING_NONE) {
                 gsp_cfg_info.layer1_info.pmargb_en = 1;
-                gsp_cfg_info.layer1_info.pmargb_mod = 1;
+                if (layer2->blending == HWC_BLENDING_PREMULT)
+                    gsp_cfg_info.layer1_info.pmargb_mod = 1;
+                else
+                    gsp_cfg_info.layer1_info.pmargb_mod = 0;
+            } else {
+                gsp_cfg_info.layer1_info.pmargb_en = 0;
             }
             gsp_cfg_info.layer1_info.rot_angle = rotationType_convert(layer2->transform);
 

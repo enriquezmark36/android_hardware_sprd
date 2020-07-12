@@ -484,7 +484,7 @@ int SprdPrimaryDisplayDevice:: commit(hwc_display_contents_1_t* list)
                 overlaySet = false;
                 mCurrentBuffer = NULL; // force Overlay unset by doing a page flip
             }
-            goto displayDone;
+            break;
     }
 
 

@@ -669,14 +669,14 @@ status_t SprdCameraHardware::setPreviewWindow(preview_stream_ops *w)
 		return ret;
 	}
 
-#ifdef CONFIG_CAMERA_DMA_COPY
-	usage = GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_PRIVATE_0;
-#else
+#ifndef CONFIG_CAMERA_DMA_COPY
 	if (PREVIEW_BUFFER_USAGE_DCAM == mPreviewBufferUsage) {
 		usage = GRALLOC_USAGE_SW_WRITE_OFTEN;
 	} else {
 		usage = GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_CAMERA_BUFFER;
 	}
+#else
+	usage = GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_CAMERA_BUFFER;
 #endif
 
 	if (w->set_usage(w, usage )) {
@@ -3984,14 +3984,28 @@ int SprdCameraHardware::uv420CopyTrim(struct _dma_copy_cfg_tag dma_copy_cfg)
 int SprdCameraHardware::displayCopy(uint32_t dst_phy_addr, uint32_t dst_virtual_addr,
 		uint32_t src_phy_addr, uint32_t src_virtual_addr, uint32_t src_w, uint32_t src_h)
 {
-	int ret = 0;
+	int ret = -1;
 	struct _dma_copy_cfg_tag dma_copy_cfg;
 
 	if (!mPreviewWindow || !mGrallocHal)
 		return -EOWNERDEAD;
 
-	if (0 == s_mem_method) {
-#ifdef CONFIG_CAMERA_DMA_COPY
+/*
+ * If both CONFIG_CAMERA_DMA_COPY and CONFIG_CAMERA_ANTI_SHAKE is defined
+ * always prefer CONFIG_CAMERA_DMA_COPY as it is done before this function
+ * was rewritten.
+ *
+ * NOTE: CONFIG_CAMERA_ANTI_SHAKE does not use sprd_dma_copy and is much like
+ * a normal SW level copy function with extra steps (read: ANTI SHAKE).
+ * CONFIG_CAMERA_DMA_COPY on the other hand is a very simple copy function
+ * that occurs on hardware via the sprd_dma_copy kernel driver.
+ */
+#if defined(CONFIG_CAMERA_DMA_COPY) || defined(CONFIG_CAMERA_ANTI_SHAKE)
+#if defined(CONFIG_CAMERA_DMA_COPY)
+	if ((0 == s_mem_method) && dst_phy_addr) {
+#else
+	if ((0 == s_mem_method)) {
+#endif
 		dma_copy_cfg.format = DMA_COPY_YUV420;
 		dma_copy_cfg.src_size.w = src_w;
 		dma_copy_cfg.src_size.h = src_h;
@@ -3999,6 +4013,7 @@ int SprdCameraHardware::displayCopy(uint32_t dst_phy_addr, uint32_t dst_virtual_
 		dma_copy_cfg.src_rec.y = mPreviewHeight_trimy;
 		dma_copy_cfg.src_rec.w = mPreviewWidth_backup;
 		dma_copy_cfg.src_rec.h = mPreviewHeight_backup;
+#ifdef CONFIG_CAMERA_DMA_COPY
 		dma_copy_cfg.src_addr.y_addr = src_phy_addr;
 		dma_copy_cfg.src_addr.uv_addr = src_phy_addr + dma_copy_cfg.src_size.w * dma_copy_cfg.src_size.h;
 		dma_copy_cfg.dst_addr.y_addr = dst_phy_addr;
@@ -4011,15 +4026,6 @@ int SprdCameraHardware::displayCopy(uint32_t dst_phy_addr, uint32_t dst_virtual_
 		}
 		ret = camera_dma_copy_data(dma_copy_cfg);
 #else
-
-#ifdef CONFIG_CAMERA_ANTI_SHAKE
-		dma_copy_cfg.format = DMA_COPY_YUV420;
-		dma_copy_cfg.src_size.w = src_w;
-		dma_copy_cfg.src_size.h = src_h;
-		dma_copy_cfg.src_rec.x = mPreviewWidth_trimx;
-		dma_copy_cfg.src_rec.y = mPreviewHeight_trimy;
-		dma_copy_cfg.src_rec.w = mPreviewWidth_backup;
-		dma_copy_cfg.src_rec.h = mPreviewHeight_backup;
 		dma_copy_cfg.src_addr.y_addr = src_virtual_addr;
 		dma_copy_cfg.src_addr.uv_addr = src_virtual_addr + dma_copy_cfg.src_size.w * dma_copy_cfg.src_size.h;
 		dma_copy_cfg.dst_addr.y_addr = dst_virtual_addr;
@@ -4031,21 +4037,17 @@ int SprdCameraHardware::displayCopy(uint32_t dst_phy_addr, uint32_t dst_virtual_
 			dma_copy_cfg.dst_addr.uv_addr = dst_virtual_addr + dma_copy_cfg.src_rec.w * dma_copy_cfg.src_rec.h;
 		}
 		ret = uv420CopyTrim(dma_copy_cfg);
-#else
-		if (mIsDvPreview) {
-			memcpy((void *)dst_virtual_addr, (void *)src_virtual_addr, SIZE_ALIGN(src_w)*SIZE_ALIGN(src_h)*3/2);
-		} else {
-			memcpy((void *)dst_virtual_addr, (void *)src_virtual_addr, src_w*src_h*3/2);
-		}
+#endif
+	}
 #endif
 
-#endif
-	} else {
+	if (ret != 0) {
 		if (mIsDvPreview) {
 			memcpy((void *)dst_virtual_addr, (void *)src_virtual_addr, SIZE_ALIGN(src_w) * SIZE_ALIGN(src_h) * 3/2);
 		} else {
 			memcpy((void *)dst_virtual_addr, (void *)src_virtual_addr, src_w*src_h*3/2);
 		}
+		ret = 0; // memcpy() always succeeds, when it doesn't it won't return.
 	}
 	return ret;
 }
@@ -4162,7 +4164,18 @@ bool SprdCameraHardware::displayOneFrame(uint32_t width, uint32_t height, uint32
 		}
 
 		private_h = (struct private_handle_t *)(*buf_handle);
-		dst_phy_addr =  (uint32_t)(private_h->phyaddr);
+
+#ifdef CONFIG_CAMERA_DMA_COPY
+		if (private_h->flags | (private_handle_t::PRIV_FLAGS_USES_PHY)) {
+			int size, phy, ret;
+			ret = MemoryHeapIon::Get_phy_addr_from_ion(private_h->share_fd, &phy, &size);
+			if (ret < 0) {
+				LOGE("%s: Failed to retrieve physical address", __func__);
+			} else {
+				dst_phy_addr = (uint32_t) phy;
+			}
+		}
+#endif
 
 		if (isPreviewing()) {
 			ret = displayCopy(dst_phy_addr, (uint32_t)vaddr, phy_addr, (uint32_t)virtual_addr, width, height);
@@ -4202,20 +4215,8 @@ bool SprdCameraHardware::displayOneFrame(uint32_t width, uint32_t height, uint32
 
 			releasePreviewFrame();
 
-			if (mIsDvPreview) {
-				ret = mGrallocHal->lock(mGrallocHal, *mPreviewBufferHandle[id], GRALLOC_USAGE_SW_WRITE_OFTEN,
-							0, 0, SIZE_ALIGN(width), SIZE_ALIGN(height), &vaddr);
-			} else {
-				ret = mGrallocHal->lock(mGrallocHal, *mPreviewBufferHandle[id], GRALLOC_USAGE_SW_WRITE_OFTEN,
-							0, 0, width, height, &vaddr);
-			}
-			if (0 != ret || NULL == vaddr) {
-				LOGE("%s: failed to lock buffer ret=%d, vaddr=0x%x id=%d",
-					__func__,ret,(int)vaddr, id);
-				return false;
-			}
+			// Refrain from locking/unlocking when there's nothing to be done within it.
 
-			mGrallocHal->unlock(mGrallocHal, *mPreviewBufferHandle[id]);
 			if (0 != mPreviewWindow->enqueue_buffer(mPreviewWindow, mPreviewBufferHandle[id])) {
 				LOGE("displayOneFrame fail: Could not enqueue gralloc buffer!\n");
 

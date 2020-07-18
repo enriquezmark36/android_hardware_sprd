@@ -505,7 +505,7 @@ static int gralloc_alloc_framebuffer_locked(alloc_device_t* dev, size_t size, in
 			AINF("framebuffer accessed with dma buf (fd 0x%x)\n", (int)fb_dma_buf.fd);
 			hnd->share_fd = fb_dma_buf.fd;
 		}
-	#elif HIDL_INVALID_FD
+	#elif defined(HIDL_INVALID_FD)
 		hnd->share_fd = dup(m->framebuffer->fd);
 		AINF("Working around the FD issue. Using %d instead, caveat emptor.\n", hnd->share_fd);
 	#endif
@@ -649,7 +649,7 @@ AllocNormalBuffer:
 		}
 	}
 
-	ALOGV("%s handle:0x%x end err is %d",__FUNCTION__,(unsigned int)*pHandle,err);
+	ALOGE("%s handle:0x%x end err is %d",__FUNCTION__,(unsigned int)*pHandle,err);
 	if (err < 0)
 	{
 		return err;
@@ -752,6 +752,12 @@ static int alloc_device_free(alloc_device_t* dev, buffer_handle_t handle)
 		const size_t bufferSize = m->finfo.line_length * m->info.yres;
 		int index = (hnd->base - m->framebuffer->base) / bufferSize;
 		m->bufferMask &= ~(1<<index);
+		/*
+		 * We won't actually close this FB when using the HIDL workarounds
+		 * especially the INVALID FD workaround.
+		 * I don't understand the internals of the closed source libMali blob
+		 * but it doesn't play well with closing this fildes.
+		 */
 		close(hnd->fd);
 #endif
 
@@ -785,8 +791,20 @@ static int alloc_device_free(alloc_device_t* dev, buffer_handle_t handle)
 			ALOGV("%s the vadress 0x%x size of 0x%x will be free",__FUNCTION__,hnd->base,hnd->size);
 			if ( 0 != munmap( (void*)hnd->base, hnd->size ) ) AERR( "Failed to munmap handle 0x%x", (unsigned int)hnd );
 		}
-		close( hnd->share_fd );
-		if ( 0 != ion_free( m->ion_client, hnd->ion_hnd ) ) AERR( "Failed to ion_free( ion_client: %d ion_hnd: %p )", m->ion_client, hnd->ion_hnd );
+		close( hnd->share_fd ); // close duplicated share_fd
+
+#ifndef HIDL_DEFER_FREE
+		/*
+		 * On HIDL, alloc_device_free() is almost always called after
+		 * alloc_device_alloc() and duplicating the handle.
+		 * gralloc_(un)register_buffer() on the duped handle WILL
+		 * still work but will orphaned the allocation in ION
+		 * because the handle is freed but there's still an mmap'ed
+		 * memory.
+		 */
+		if (0 != ion_free( m->ion_client, hnd->ion_hnd ))
+			AERR( "Failed to ion_free( ion_client: %d ion_hnd: %p )", m->ion_client, hnd->ion_hnd );
+#endif
 		memset( (void*)hnd, 0, sizeof( *hnd ) );
 #else 
 		AERR( "Can't free dma_buf memory for handle:0x%x. Not supported.", (unsigned int)hnd );

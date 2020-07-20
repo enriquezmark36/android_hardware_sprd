@@ -541,17 +541,25 @@ static int alloc_device_alloc(alloc_device_t* dev, int w, int h, int format, int
 
 	size_t size;
 	size_t stride;
-	if (format == HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED || format == HAL_PIXEL_FORMAT_YCbCr_420_SP || format == HAL_PIXEL_FORMAT_YCrCb_420_SP || format == HAL_PIXEL_FORMAT_YV12 )
-	{
-		switch (format)
-		{
+	if (format == HAL_PIXEL_FORMAT_YCrCb_420_SP ||
+	    format == HAL_PIXEL_FORMAT_YV12 ||
+	    format == HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED ||
+	    format == HAL_PIXEL_FORMAT_YCbCr_420_SP ||
+	    format == HAL_PIXEL_FORMAT_YCbCr_420_P ||
+	    format == HAL_PIXEL_FORMAT_YCbCr_422_I
+	){
+		switch (format) {
 		case HAL_PIXEL_FORMAT_YCbCr_420_SP:
 		case HAL_PIXEL_FORMAT_YCrCb_420_SP:
 		case HAL_PIXEL_FORMAT_YV12:
+		case HAL_PIXEL_FORMAT_YCbCr_420_P:
 		case HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED:
 			stride = GRALLOC_ALIGN(w, 16);
 			size = h * (stride + GRALLOC_ALIGN(stride/2,16));
-
+			break;
+		case HAL_PIXEL_FORMAT_YCbCr_422_I:
+			stride = GRALLOC_ALIGN(w, 16);
+			size = h * stride * 2;
 			break;
 		default:
 			return -EINVAL;

@@ -25,7 +25,7 @@
 #include <sys/ioctl.h>
 #include <stdio.h>
 
-#define LOG_NDEBUG 0
+// #define LOG_NDEBUG 0
 #define LOG_TAG "VSP_SHIM"
 #include <cutils/log.h>
 
@@ -33,9 +33,13 @@
 #define VSP_CONFIG_FREQ _IOW(SPRD_VSP_IOCTL_MAGIC, 1, unsigned int)
 #define VSP_GET_FREQ    _IOR(SPRD_VSP_IOCTL_MAGIC, 2, unsigned int)
 
+// These are extensions which is safe not to pass as an ioctl
+#define VSP_SET_SCENE   _IO(SPRD_VSP_IOCTL_MAGIC, 11)
+#define VSP_GET_SCENE   _IO(SPRD_VSP_IOCTL_MAGIC, 12)
 
 static int (*real_ioctl)(int fd, int request, void *arg) =
     (int (*)(int fd, int request, void *arg)) dlsym(RTLD_NEXT, "ioctl");
+static unsigned int scene_mode = 0;
 
 extern "C" int ___VSP_CONFIG_DEV_FREQ(int fd, int *param) {
 	int mod_param;
@@ -75,10 +79,19 @@ extern "C" int ioctl(int fd, int req, ...)
 	param.p = va_arg(ap, void*);
 	va_end(ap);
 
+	ALOGV("___VSP_IOCTL: request(%d)", request);
+
+
 	if (request == VSP_CONFIG_FREQ) {
 		ret = ___VSP_CONFIG_DEV_FREQ(fd, param.int_p);
 	} else if (request == VSP_GET_FREQ) {
 		ret = ___VSP_CONFIG_DEV_FREQ(fd, param.int_p);
+	} else if (request == VSP_SET_SCENE) {
+		scene_mode = *param.int_p;
+		ret = 0;
+	} else if (request == VSP_GET_SCENE) {
+		*param.int_p = scene_mode;
+		ret = 0;
 	} else {
 		ret = real_ioctl(fd, request, param.p);
 	}

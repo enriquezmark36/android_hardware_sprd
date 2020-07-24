@@ -657,7 +657,7 @@ AllocNormalBuffer:
 		}
 	}
 
-	ALOGE("%s handle:0x%x end err is %d",__FUNCTION__,(unsigned int)*pHandle,err);
+	ALOGV("%s handle:0x%x end err is %d",__FUNCTION__,(unsigned int)*pHandle,err);
 	if (err < 0)
 	{
 		return err;
@@ -750,22 +750,18 @@ static int alloc_device_free(alloc_device_t* dev, buffer_handle_t handle)
 #endif
 	if (hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER)
 	{
-	// We won't actually free the FB when in when the
-	// workaround HIDL_NO_FREE_FB is active since the HIDL implementation
-	// will call free() the moment the allocation had succeeded then has been
-	// registered twice, one in this module, second in the HIDL implementation.
-#ifndef HIDL_NO_FREE_FB
+	/*
+	 * We won't actually free the FB when in when the workaround
+	 * HIDL_NO_FREE_FB is active. The HIDL implementation will call
+	 * free() the moment the allocation had succeeded.
+	 * HIDL_DEFER_FREE also implements HIDL_NO_FREE_FB.
+	 */
+#if !defined(HIDL_DEFER_FREE) && !defined(HIDL_NO_FREE_FB)
 		// free this buffer
 		private_module_t* m = reinterpret_cast<private_module_t*>(dev->common.module);
 		const size_t bufferSize = m->finfo.line_length * m->info.yres;
 		int index = (hnd->base - m->framebuffer->base) / bufferSize;
 		m->bufferMask &= ~(1<<index);
-		/*
-		 * We won't actually close this FB when using the HIDL workarounds
-		 * especially the INVALID FD workaround.
-		 * I don't understand the internals of the closed source libMali blob
-		 * but it doesn't play well with closing this fildes.
-		 */
 		close(hnd->fd);
 #endif
 

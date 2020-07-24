@@ -241,10 +241,27 @@ static int gralloc_unregister_buffer(gralloc_module_t const *module, buffer_hand
 
 	private_handle_t *hnd = (private_handle_t *)handle;
 
-#if HIDL_INVALID_FD
+#if defined(HIDL_INVALID_FD) || defined(HIDL_DEFER_FREE)
 	if (hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER)
 	{
+#ifdef HIDL_INVALID_FD
 		AINF("Working around the FD issue Prt3. Silently ignore calls to unregister the FB: %p\n", handle);
+#endif
+
+#ifdef HIDL_DEFER_FREE
+		/*
+		 * If we do unregister the FB memory, we'd close the file descriptor
+		 * Mali will segfault when it uses this handle afterwards.
+		 * As usual, check if it's the same client.
+		 */
+		private_module_t* m = (private_module_t*)(module);
+		if (m->ion_client == hnd->ion_client) {
+			const size_t bufferSize = m->finfo.line_length * m->info.yres;
+			int index = (hnd->base - m->framebuffer->base) / bufferSize;
+			m->bufferMask &= ~(1<<index);
+			close(hnd->fd);
+		}
+#endif
 		return 0;
 	}
 #endif

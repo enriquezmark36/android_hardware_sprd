@@ -24,6 +24,7 @@
 
 #include "aud_proc.h"
 #include "aud_filter_calc.h"
+#include "vb_hal.h" // from libvbeffect
 
 
 /**---------------------------------------------------------------------------*
@@ -199,37 +200,6 @@ extern "c"
 
 
 
-/**---------------------------------------------------------------------------*
- **                     static Function definitions                             *
- **---------------------------------------------------------------------------*/
- void VB_SetHpfMode(BOOLEAN a)
-{
-}
-
-void VB_SetHpfParas(int16_t a0, int16_t a1, int16_t a2, int16_t a3, int16_t a4, int16_t a5, int16_t a6)
-{
-}	 
-
-void VB_SetHpfWidth(uint16_t width)
-{
-} 
-
-void  VB_SetHpfGain(int16_t gIndex, int16_t gValue)
-{
-}
-
-void VB_SwitchHpf(BOOLEAN is_enable)
-{
-}
-
-uint32_t VB_GetHpfGain(int16_t g_index)
-{
-    return 0;		
-}
-
-void VB_SetHpfLimit(int8_t limit)
-{
-}
 			
 /*****************************************************************************/
 //  Description:    set input gain of agc (iAgcIngainSet)

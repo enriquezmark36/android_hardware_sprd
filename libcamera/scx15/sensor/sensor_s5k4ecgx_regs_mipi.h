@@ -51,6 +51,7 @@ enum {
 	CAMERA_SCENE_MODE_CANDLELIGHT,
 	CAMERA_SCENE_MODE_FIREWORK,
 	CAMERA_SCENE_MODE_BACKLIGHT,
+	CAMERA_SCENE_MODE_DARK,
 	CAMERA_SCENE_MODE_MAX
 };
 
@@ -3585,7 +3586,7 @@ LOCAL SENSOR_REG_T s5k4ec_common_init[] = {
 	// Capture
 	//===================================================================
 	{0x002A, 0x0396},
-	{0x0F12, 0x0000},	//REG_0TC_CCFG_uCaptureMode
+	{0x0F12, 0x0001},	//REG_0TC_CCFG_uCaptureMode // Use AWB/AE
 	{0x0F12, 0x0A00},	//REG_0TC_CCFG_usWidth //2560
 	{0x0F12, 0x0780},	//REG_0TC_CCFG_usHeight //1920
 	{0x0F12, 0x0005},	//REG_0TC_CCFG_Format //5:YUV, 7:RAW, 9:JPEG
@@ -3918,6 +3919,59 @@ LOCAL SENSOR_REG_T s5k4ec_scene_candlelight[] = {
 	{0xFFFF, 0xFFFF},
 };
 
+LOCAL SENSOR_REG_T s5k4ec_scene_dark[] = {
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
+	{0x002A, 0x06B8},
+	{0x0F12, 0x452C},
+	{0x0F12, 0x00BF},
+
+	{0x002A, 0x02BE},
+	{0x0F12, 0x0000},
+	{0x0F12, 0x0000},
+	{0x0F12, 0x1388}, // 2 fps min
+	{0x0F12, 0x014A}, // 30 fps max
+
+	{0x002A, 0x03B0},
+	{0x0F12, 0x0000},
+	{0x0F12, 0x0002},
+	{0x0F12, 0x4E20}, // 0.5 fps min
+	{0x0F12, 0x0000}, // max cap (~30 fps)
+
+	{0x002A, 0x1648},
+	{0x0F12, 0x9000},
+	{0x002A, 0x15E8},
+	{0x0F12, 0x0006},
+	{0x0F12, 0x0036},
+	{0x0F12, 0x003A},
+	{0x0F12, 0x0040},
+	{0x0F12, 0x0048},
+	{0x0F12, 0x0050},
+	{0x0F12, 0x0058},
+	{0x0F12, 0x0060},
+
+	{0x002A, 0x0608},
+	{0x0F12, 0x0001}, /*#lt_ExpGain_uSubsamplingmode*/
+	{0x0F12, 0x0001}, /*#lt_ExpGain_uNonSubsampling*/
+	{0x0F12, 0x0600}, /*#lt_ExpGain_ExpCurveGainMaxStr*/
+	{0x0F12, 0x0100},
+
+	{0x002A, 0x0266},
+	{0x0F12, 0x0000},
+	{0x002A, 0x026A},
+	{0x0F12, 0x0001},
+	{0x002A, 0x024E},
+	{0x0F12, 0x0001},
+	{0x002A, 0x0268},
+	{0x0F12, 0x0001},
+	{0x002A, 0x0270},
+	{0x0F12, 0x0001},
+	{0x002A, 0x023E},
+	{0x0F12, 0x0001},
+	{0x0F12, 0x0001},
+	{0xFFFF, 0xFFFF},
+};
+
 LOCAL SENSOR_REG_T s5k4ec_scene_dawn[] = {
 	{0xFCFC, 0xD000},
 	{0x0028, 0x7000},
@@ -4085,7 +4139,7 @@ LOCAL SENSOR_REG_T s5k4ec_scene_night[] = {
 	{0x002A, 0x03B0},
 	{0x0F12, 0x0000},
 	{0x0F12, 0x0002},
-	{0x0F12, 0x1964}, //1.5fps min
+	{0x0F12, 0x1964}, //1.5 fps min
 	{0x0F12, 0x0000},
 
 	{0x002A, 0x1648},
@@ -4391,7 +4445,7 @@ LOCAL SENSOR_REG_T s5k4ec_scene_revert_sharpness0[] = {
 	{0xFFFF, 0xFFFF},
 };
 
-LOCAL SENSOR_REG_T s5k4ec_scene_revert_gain[] = {
+LOCAL SENSOR_REG_T s5k4ec_scene_revert_exp[] = {
 	{0xFCFC, 0xD000},
 	{0x0028, 0x7000},
 
@@ -4449,6 +4503,21 @@ LOCAL SENSOR_REG_T s5k4ec_scene_revert_sports[] = {
 
 	{0xFFFF, 0xFFFF},
 };
+
+LOCAL SENSOR_REG_T s5k4ec_scene_revert_gain[] = {
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
+
+	{0x002A, 0x0608},
+	{0x0F12, 0x0001}, /*#lt_ExpGain_uSubsamplingmode*/
+	{0x0F12, 0x0001}, /*#lt_ExpGain_uNonSubsampling*/
+	{0x0F12, 0x0800}, /*#lt_ExpGain_ExpCurveGainMaxStr*/
+	{0x0F12, 0x0100}, /*#lt_ExpGain_ExpCurveGainMaxStr*/
+
+	{0xFFFF, 0xFFFF},
+};
+
+
 
 //==========================================================
 // Sharpness
@@ -4961,6 +5030,27 @@ LOCAL SENSOR_REG_T s5k4ec_night_mode_On[] = {
 };
 
 LOCAL SENSOR_REG_T s5k4ec_night_mode_Off[] = {
+	{0x0028, 0x7000},
+	{0x002A, 0x0608},
+	{0x0F12, 0x0001}, /*#lt_ExpGain_uSubsamplingmode*/
+	{0x0F12, 0x0001}, /*#lt_ExpGain_uNonSubsampling*/
+	{0x0F12, 0x0800}, /*#lt_ExpGain_ExpCurveGainMaxStr*/
+	{0xFFFF, 0xFFFF},
+};
+
+LOCAL SENSOR_REG_T s5k4ec_night_mode_revert_LEI[] = {
+	{0x0028, 0x7000},
+	{0x002A, 0x06B8},
+	{0x0F12, 0x452C},
+	{0x0F12, 0x0005}, //lt_uMaxLei
+	{0xFFFF, 0xFFFF},
+};
+
+LOCAL SENSOR_REG_T s5k4ec_night_mode_apply_LEI[] = {
+	{0x0028, 0x7000},
+	{0x002A, 0x06B8},
+	{0x0F12, 0xFFFF},
+	{0x0F12, 0x00FF}, //lt_uMaxLei
 	{0xFFFF, 0xFFFF},
 };
 
@@ -5065,6 +5155,7 @@ LOCAL SENSOR_REG_T s5k4ec_low_cap_Off[] = {
 
 	{0xFFFF, 0xFFFF},
 };
+
 
 //==========================================================
 // Autofocus
@@ -5565,7 +5656,6 @@ LOCAL SENSOR_REG_T s5k4ec_30_FPS[] = {
 //    Yet, these reg settings don't. Since most often, the
 //    succeeding reg settings will eventually call it.
 //==========================================================
-
 // "short exposure" mode. Stock settings. Up to 133 milliseconds
 // Used for normal photography with/without flash.
 LOCAL SENSOR_REG_T s5k4ec_capture_short_FPS[] = {
@@ -5592,14 +5682,80 @@ LOCAL SENSOR_REG_T s5k4ec_capture_med_FPS[] = {
 
 // "Long exposure" mode. Up to 650 milliseconds
 // Built in the night scene mode reg setting.
-// Basically, this is just for display.
 LOCAL SENSOR_REG_T s5k4ec_capture_long_FPS[] = {
+	{0x0028, 0x7000},
+	{0x002A, 0x0638},
+	{0x0F12, 0x0001},
+	{0x0F12, 0x0000},
+	{0x0F12, 0x0A3C},
+	{0x0F12, 0x0000},
+	{0x0F12, 0x0D05},
+	{0x0F12, 0x0000},
+	{0x0F12, 0x3408},
+	{0x0F12, 0x0000},
+	{0x0F12, 0x3408},
+	{0x0F12, 0x0000},
+	{0x0F12, 0x6810},
+	{0x0F12, 0x0000},
+	{0x0F12, 0x8214},
+	{0x0F12, 0x0000},
+	{0x0F12, 0x1A80},
+	{0x0F12, 0x0006},
+	{0x0F12, 0x1A80},
+	{0x0F12, 0x0006},
+	{0x0F12, 0x1A80},
+	{0x0F12, 0x0006},
+	{0xFFFF, 0xFFFF},
+};
+
+// "Longer exposure" mode. Up to 2 seconds, Theoretically up to 4 seconds.
+// One should consider using a tripod to reduce motion blur.
+// And also a patched kernel since this can easily surpass sprd_dcam's timeout
+LOCAL SENSOR_REG_T s5k4ec_capture_longer_FPS[] = {
+	{0x0028, 0x7000},
+	{0x002A, 0x0638},
+	{0x0F12, 0x0001},
+	{0x0F12, 0x0000}, /*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_0_ */
+	{0x0F12, 0x0A3C},
+	{0x0F12, 0x0000}, /*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_1_ */
+	{0x0F12, 0x0D05},
+	{0x0F12, 0x0000}, /*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_2_ */
+	{0x0F12, 0x3408},
+	{0x0F12, 0x0000}, /*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_3_ */
+	{0x0F12, 0x1A80},
+	{0x0F12, 0x0006}, /*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_4_ */
+	{0x0F12, 0x3500},
+	{0x0F12, 0x000C}, /*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_5_ */
+	{0x0F12, 0x3500},
+	{0x0F12, 0x000C}, /*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_6_ */
+	{0x0F12, 0x0428},
+	{0x0F12, 0x0001}, /*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_7_ */
+	{0x0F12, 0x6A00},
+	{0x0F12, 0x0018}, /*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_8_ */
+	{0x0F12, 0x6A00},
+	{0x0F12, 0x0018}, /*lt_ExpGain_ExpCurveGainMaxStr_0__ulExpOut_9_ */
+	{0xFFFF, 0xFFFF},
+};
+
+// Not really a exposure setting. Only used for HDR mode where Exposure time
+// is manually adjusted. Lifts up the restriction on how fast or slow the
+// Shutter speed could be after changing the Exposure time.
+LOCAL SENSOR_REG_T s5k4ec_capture_hdr_FPS[] = {
 	{0x0028, 0x7000},
 	{0x002A, 0x03B0},
 	{0x0F12, 0x0000}, // REG_0TC_CCFG_usFrTimeType
 	{0x0F12, 0x0002}, // REG_0TC_CCFG_FrRateQualityType
-	{0x0F12, 0x1964}, // REG_0TC_CCFG_usMaxFrTimeMsecMult10
+	{0x0F12, 0xFFFF}, // REG_0TC_CCFG_usMaxFrTimeMsecMult10
 	{0x0F12, 0x0000}, // REG_0TC_CCFG_usMinFrTimeMsecMult10
+
+	{0x002A, 0x0266},
+	{0x0F12, 0x0000}, //REG_TC_GP_ActivePrevConfig
+	{0x002A, 0x026A},
+	{0x0F12, 0x0001}, //REG_TC_GP_PrevOpenAfterChange
+	{0x002A, 0x024E},
+	{0x0F12, 0x0001}, //REG_TC_GP_NewConfigSync
+	{0x002A, 0x0270},
+	{0x0F12, 0x0001}, // REG_TC_GP_CapConfigChanged
 	{0xFFFF, 0xFFFF},
 };
 
@@ -5812,82 +5968,109 @@ LOCAL SENSOR_REG_T s5k4ec_320X240[] = {
 	{0x0028, 0x7000},
 
 	{0x002A, 0x18AC},
-	{0x0F12, 0x0060},	//senHal_uAddColsBin
-	{0x0F12, 0x0060},	//senHal_uAddColsNoBin
-	{0x0F12, 0x06C8},	//senHal_uMinColsBin
-	{0x0F12, 0x06C8},	//senHal_uMinColsNoBin
+	{0x0F12, 0x0060},	// senHal_uAddColsBin
+	{0x0F12, 0x0060},	// senHal_uAddColsNoBin
+	{0x0F12, 0x06C8},	// senHal_uMinColsBin
+	{0x0F12, 0x06C8},	// senHal_uMinColsNoBin
 
 	{0x002A, 0x0250},
-	{0x0F12, 0x0A00},	//REG_TC_GP_PrevReqInputWidth //2560
-	{0x0F12, 0x0780},	//REG_TC_GP_PrevReqInputHeight //1920
-	{0x0F12, 0x0010},	//REG_TC_GP_PrevInputWidthOfs //(2592-2560)/2
-	{0x0F12, 0x000C},	//REG_TC_GP_PrevInputHeightOfs //(1944-1920)/2
+	{0x0F12, 0x0A00},	// REG_TC_GP_PrevReqInputWidth //2560
+	{0x0F12, 0x0780},	// REG_TC_GP_PrevReqInputHeight //1920
+	{0x0F12, 0x0010},	// REG_TC_GP_PrevInputWidthOfs //(2592-2560)/2
+	{0x0F12, 0x000C},	// REG_TC_GP_PrevInputHeightOfs //(1944-1920)/2
+	{0x0F12, 0x0A00},	// REG_TC_GP_CapReqInputWidth 2560
+	{0x0F12, 0x0780},	// REG_TC_GP_CapReqInputHeight 1920
+	{0x0F12, 0x0010},	// REG_TC_GP_CapInputWidthOfs (2592-2560)/2
+	{0x0F12, 0x000C},	// REG_TC_GP_CapInputHeightOfs (1944-1920)/2
 
 	{0x002A, 0x0262},
-	{0x0F12, 0x0001},	//REG_TC_GP_bUseReqInputInPre
+	{0x0F12, 0x0001},	// REG_TC_GP_bUseReqInputInPre
+	{0x0F12, 0x0001},	// REG_TC_GP_bUseReqInputInCap
 
 	{0x002A, 0x0494},
-	{0x0F12, 0x0A00},	//REG_TC_PZOOM_PrevZoomReqInputWidth //2560
-	{0x0F12, 0x0780},	//REG_TC_PZOOM_PrevZoomReqInputHeight //1920
-	{0x0F12, 0x0000},	//REG_TC_PZOOM_PrevZoomReqInputWidthOfs
-	{0x0F12, 0x0000},	//REG_TC_PZOOM_PrevZoomReqInputHeightOfs
+	{0x0F12, 0x0A00},	// REG_TC_PZOOM_PrevZoomReqInputWidth //2560
+	{0x0F12, 0x0780},	// REG_TC_PZOOM_PrevZoomReqInputHeight //1920
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_PrevZoomReqInputWidthOfs
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_PrevZoomReqInputHeightOfs
+	{0x0F12, 0x0A00},	// REG_TC_PZOOM_CapZoomReqInputWidth 2560
+	{0x0F12, 0x0780},	// REG_TC_PZOOM_CapZoomReqInputHeight 1920
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_CapZoomReqInputWidthOfs
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_CapZoomReqInputHeightOfs
 
 	{0x002A, 0x02A6},
-	{0x0F12, 0x0140},	//REG_0TC_PCFG_usWidth //320
-	{0x0F12, 0x00F0},	//REG_0TC_PCFG_usHeight //240
+	{0x0F12, 0x0140},	// REG_0TC_PCFG_usWidth //320
+	{0x0F12, 0x00F0},	// REG_0TC_PCFG_usHeight //240
+	{0x002A, 0x0398},
+	{0x0F12, 0x0140},	// REG_0TC_CCFG_usWidth //320
+	{0x0F12, 0x00F0},	// REG_0TC_CCFG_usHeight //240
 
 	{0x002A, 0x0266},
-	{0x0F12, 0x0000},	//REG_TC_GP_ActivePrevConfig
+	{0x0F12, 0x0000},	// REG_TC_GP_ActivePrevConfig
 	{0x002A, 0x026A},
-	{0x0F12, 0x0001},	//REG_TC_GP_PrevOpenAfterChange
+	{0x0F12, 0x0001},	// REG_TC_GP_PrevOpenAfterChange
 	{0x002A, 0x024E},
-	{0x0F12, 0x0001},	//REG_TC_GP_NewConfigSync
+	{0x0F12, 0x0001},	// REG_TC_GP_NewConfigSync
 	{0x002A, 0x0268},
-	{0x0F12, 0x0001},	//REG_TC_GP_PrevConfigChanged
+	{0x0F12, 0x0001},	// REG_TC_GP_PrevConfigChanged
+	{0x002A, 0x0270},
+	{0x0F12, 0x0001},	// REG_TC_GP_CapConfigChanged
 };
 
-//640X480 YUV (Preview Only)
+//640X480 YUV (Preview and Capture)
 LOCAL SENSOR_REG_T s5k4ec_640X480[] = {
 	{0xFCFC, 0xD000},
 	{0x0028, 0x7000},
 
 	{0x002A, 0x18AC},
-	{0x0F12, 0x0060},	//senHal_uAddColsBin
-	{0x0F12, 0x0060},	//senHal_uAddColsNoBin
-	{0x0F12, 0x06C8},	//senHal_uMinColsBin
-	{0x0F12, 0x06C8},	//senHal_uMinColsNoBin
+	{0x0F12, 0x0060},	// senHal_uAddColsBin
+	{0x0F12, 0x0060},	// senHal_uAddColsNoBin
+	{0x0F12, 0x06C8},	// senHal_uMinColsBin
+	{0x0F12, 0x06C8},	// senHal_uMinColsNoBin
 
 	{0x002A, 0x0250},
-	{0x0F12, 0x0A00},	//REG_TC_GP_PrevReqInputWidth //2560
-	{0x0F12, 0x0780},	//REG_TC_GP_PrevReqInputHeight //1920
-	{0x0F12, 0x0010},	//REG_TC_GP_PrevInputWidthOfs //(2592-2560)/2
-	{0x0F12, 0x000C},	//REG_TC_GP_PrevInputHeightOfs //(1944-1920)/2
+	{0x0F12, 0x0A00},	// REG_TC_GP_PrevReqInputWidth //2560
+	{0x0F12, 0x0780},	// REG_TC_GP_PrevReqInputHeight //1920
+	{0x0F12, 0x0010},	// REG_TC_GP_PrevInputWidthOfs //(2592-2560)/2
+	{0x0F12, 0x000C},	// REG_TC_GP_PrevInputHeightOfs //(1944-1920)/2
+	{0x0F12, 0x0A00},	// REG_TC_GP_CapReqInputWidth 2560
+	{0x0F12, 0x0780},	// REG_TC_GP_CapReqInputHeight 1920
+	{0x0F12, 0x0010},	// REG_TC_GP_CapInputWidthOfs (2592-2560)/2
+	{0x0F12, 0x000C},	// REG_TC_GP_CapInputHeightOfs (1944-1920)/2
 
 	{0x002A, 0x0262},
-	{0x0F12, 0x0001},	//REG_TC_GP_bUseReqInputInPre
+	{0x0F12, 0x0001},	// REG_TC_GP_bUseReqInputInPre
+	{0x0F12, 0x0001},	// REG_TC_GP_bUseReqInputInCap
 
 	{0x002A, 0x0494},
-	{0x0F12, 0x0A00},	//REG_TC_PZOOM_PrevZoomReqInputWidth //2560
-	{0x0F12, 0x0780},	//REG_TC_PZOOM_PrevZoomReqInputHeight //1920
-	{0x0F12, 0x0000},	//REG_TC_PZOOM_PrevZoomReqInputWidthOfs
-	{0x0F12, 0x0000},	//REG_TC_PZOOM_PrevZoomReqInputHeightOfs
+	{0x0F12, 0x0A00},	// REG_TC_PZOOM_PrevZoomReqInputWidth //2560
+	{0x0F12, 0x0780},	// REG_TC_PZOOM_PrevZoomReqInputHeight //1920
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_PrevZoomReqInputWidthOfs
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_PrevZoomReqInputHeightOfs
+	{0x0F12, 0x0A00},	// REG_TC_PZOOM_CapZoomReqInputWidth 2560
+	{0x0F12, 0x0780},	// REG_TC_PZOOM_CapZoomReqInputHeight 1920
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_CapZoomReqInputWidthOfs
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_CapZoomReqInputHeightOfs
 
 	{0x002A, 0x02A6},
-	{0x0F12, 0x0280},	//REG_0TC_PCFG_usWidth //640
-	{0x0F12, 0x01E0},	//REG_0TC_PCFG_usHeight //480
+	{0x0F12, 0x0280},	// REG_0TC_PCFG_usWidth //640
+	{0x0F12, 0x01E0},	// REG_0TC_PCFG_usHeight //480
+	{0x002A, 0x0398},
+	{0x0F12, 0x0280},	// REG_0TC_CCFG_usWidth 2560
+	{0x0F12, 0x01E0},	// REG_0TC_CCFG_usHeight 1920
 
 	{0x002A, 0x0266},
-	{0x0F12, 0x0000},	//REG_TC_GP_ActivePrevConfig
+	{0x0F12, 0x0000},	// REG_TC_GP_ActivePrevConfig
 	{0x002A, 0x026A},
-	{0x0F12, 0x0001},	//REG_TC_GP_PrevOpenAfterChange
+	{0x0F12, 0x0001},	// REG_TC_GP_PrevOpenAfterChange
 	{0x002A, 0x024E},
-	{0x0F12, 0x0001},	//REG_TC_GP_NewConfigSync
+	{0x0F12, 0x0001},	// REG_TC_GP_NewConfigSync
 	{0x002A, 0x0268},
-	{0x0F12, 0x0001},	//REG_TC_GP_PrevConfigChanged
+	{0x0F12, 0x0001},	// REG_TC_GP_PrevConfigChanged
+	{0x002A, 0x0270},
+	{0x0F12, 0x0001},	// REG_TC_GP_CapConfigChanged
 };
 
-// 720X540 YUV (Preview Only)
-// Almost Carbon Copy of 640X480
+// 720X540 YUV (Preview and Capture)
 LOCAL SENSOR_REG_T s5k4ec_720X540[] ={
 	{0xFCFC, 0xD000},
 	{0x0028, 0x7000},
@@ -5899,32 +6082,49 @@ LOCAL SENSOR_REG_T s5k4ec_720X540[] ={
 	{0x0F12, 0x06C8},	//senHal_uMinColsNoBin
 
 	{0x002A, 0x0250},
-	{0x0F12, 0x0A00},	//REG_TC_GP_PrevReqInputWidth //2560
-	{0x0F12, 0x0780},	//REG_TC_GP_PrevReqInputHeight //1920
-	{0x0F12, 0x0010},	//REG_TC_GP_PrevInputWidthOfs //(2592-2560)/2
-	{0x0F12, 0x000C},	//REG_TC_GP_PrevInputHeightOfs //(1944-1920)/2
+	{0x0F12, 0x0A00},	// REG_TC_GP_PrevReqInputWidth //2560
+	{0x0F12, 0x0780},	// REG_TC_GP_PrevReqInputHeight //1920
+	{0x0F12, 0x0010},	// REG_TC_GP_PrevInputWidthOfs //(2592-2560)/2
+	{0x0F12, 0x000C},	// REG_TC_GP_PrevInputHeightOfs //(1944-1920)/2
+	{0x0F12, 0x0A00},	// REG_TC_GP_CapReqInputWidth //2560
+	{0x0F12, 0x0780},	// REG_TC_GP_CapReqInputHeight //1920
+	{0x0F12, 0x0010},	// REG_TC_GP_CapInputWidthOfs //(2592-2560)/2
+	{0x0F12, 0x000C},	// REG_TC_GP_CapInputHeightOfs //(1944-1920)/2
 
 	{0x002A, 0x0262},
-	{0x0F12, 0x0001},	//REG_TC_GP_bUseReqInputInPre
+	{0x0F12, 0x0001},	// REG_TC_GP_bUseReqInputInPre
+	{0x0F12, 0x0001},	// REG_TC_GP_bUseReqInputInCap
 
 	{0x002A, 0x0494},
-	{0x0F12, 0x0A00},	//REG_TC_PZOOM_PrevZoomReqInputWidth //2560
-	{0x0F12, 0x0780},	//REG_TC_PZOOM_PrevZoomReqInputHeight //1920
-	{0x0F12, 0x0000},	//REG_TC_PZOOM_PrevZoomReqInputWidthOfs
-	{0x0F12, 0x0000},	//REG_TC_PZOOM_PrevZoomReqInputHeightOfs
+	{0x0F12, 0x0A00},	// REG_TC_PZOOM_PrevZoomReqInputWidth //2560
+	{0x0F12, 0x0780},	// REG_TC_PZOOM_PrevZoomReqInputHeight //1920
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_PrevZoomReqInputWidthOfs
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_PrevZoomReqInputHeightOfs
+	{0x0F12, 0x0A00},	// REG_TC_PZOOM_CapZoomReqInputWidth //2560
+	{0x0F12, 0x0780},	// REG_TC_PZOOM_CapZoomReqInputHeight //1920
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_CapZoomReqInputWidthOfs
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_CapZoomReqInputHeightOfs
+
 
 	{0x002A, 0x02A6},
-	{0x0F12, 0x02D0},	//REG_0TC_PCFG_usWidth //720
-	{0x0F12, 0x021C},	//REG_0TC_PCFG_usHeight //540
+	{0x0F12, 0x02D0},	// REG_0TC_PCFG_usWidth //720
+	{0x0F12, 0x021C},	// REG_0TC_PCFG_usHeight //540
+
+	{0x002A, 0x0398},
+	{0x0F12, 0x02D0},	// REG_0TC_CCFG_usWidth //720
+	{0x0F12, 0x021C},	// REG_0TC_CCFG_usHeight //540
+
 
 	{0x002A, 0x0266},
-	{0x0F12, 0x0000},	//REG_TC_GP_ActivePrevConfig
+	{0x0F12, 0x0000},	// REG_TC_GP_ActivePrevConfig
 	{0x002A, 0x026A},
-	{0x0F12, 0x0001},	//REG_TC_GP_PrevOpenAfterChange
+	{0x0F12, 0x0001},	// REG_TC_GP_PrevOpenAfterChange
 	{0x002A, 0x024E},
-	{0x0F12, 0x0001},	//REG_TC_GP_NewConfigSync
+	{0x0F12, 0x0001},	// REG_TC_GP_NewConfigSync
 	{0x002A, 0x0268},
-	{0x0F12, 0x0001},	//REG_TC_GP_PrevConfigChanged
+	{0x0F12, 0x0001},	// REG_TC_GP_PrevConfigChanged
+	{0x002A, 0x0270},
+	{0x0F12, 0x0001},	// REG_TC_GP_CapConfigChanged
 };
 
 // 800X480 YUV (Preview and Capture)
@@ -5934,57 +6134,58 @@ LOCAL SENSOR_REG_T s5k4ec_800X480[] = {
 	{0x0028, 0x7000},
 
 	{0x002A, 0x18AC},
-	{0x0F12, 0x0060},	//senHal_uAddColsBin
-	{0x0F12, 0x0060},	//senHal_uAddColsNoBin
-	{0x0F12, 0x06C8},	//senHal_uMinColsBin
-	{0x0F12, 0x06C8},	//senHal_uMinColsNoBin
+	{0x0F12, 0x0060},	// senHal_uAddColsBin
+	{0x0F12, 0x0060},	// senHal_uAddColsNoBin
+	{0x0F12, 0x06C8},	// senHal_uMinColsBin
+	{0x0F12, 0x06C8},	// senHal_uMinColsNoBin
 
 	{0x002A, 0x0250},
-	{0x0F12, 0x0A00},	//REG_TC_GP_PrevReqInputWidth //2560
-	{0x0F12, 0x0600},	//REG_TC_GP_PrevReqInputHeight //1536
-	{0x0F12, 0x0010},	//REG_TC_GP_PrevInputWidthOfs //(2592-2560)/2
-	{0x0F12, 0x00CC},	//REG_TC_GP_PrevInputHeightOfs //(1944-1536)/2
-	{0x0F12, 0x0A00},	//REG_TC_GP_CapReqInputWidth //2560
-	{0x0F12, 0x0600},	//REG_TC_GP_CapReqInputHeight //1536
-	{0x0F12, 0x0010},	//REG_TC_GP_CapInputWidthOfs //(2592-2560)/2
-	{0x0F12, 0x00CC},	//REG_TC_GP_CapInputHeightOfs //(1944-1536)/2
+	{0x0F12, 0x0A00},	// REG_TC_GP_PrevReqInputWidth //2560
+	{0x0F12, 0x0600},	// REG_TC_GP_PrevReqInputHeight //1536
+	{0x0F12, 0x0010},	// REG_TC_GP_PrevInputWidthOfs //(2592-2560)/2
+	{0x0F12, 0x00CC},	// REG_TC_GP_PrevInputHeightOfs //(1944-1536)/2
+	{0x0F12, 0x0A00},	// REG_TC_GP_CapReqInputWidth //2560
+	{0x0F12, 0x0600},	// REG_TC_GP_CapReqInputHeight //1536
+	{0x0F12, 0x0010},	// REG_TC_GP_CapInputWidthOfs //(2592-2560)/2
+	{0x0F12, 0x00CC},	// REG_TC_GP_CapInputHeightOfs //(1944-1536)/2
 
-	{0x002A, 0x0264},
-	{0x0F12, 0x0001},	//REG_TC_GP_bUseReqInputInCap
+	{0x002A, 0x0262},
+	{0x0F12, 0x0001},	// REG_TC_GP_bUseReqInputInPre
+	{0x0F12, 0x0001},	// REG_TC_GP_bUseReqInputInCap
 
 	{0x002A, 0x0494},
-	{0x0F12, 0x0A00},	//REG_TC_PZOOM_PrevZoomReqInputWidth //2560
-	{0x0F12, 0x0600},	//REG_TC_PZOOM_PrevZoomReqInputHeight //1536
-	{0x0F12, 0x0000},	//REG_TC_PZOOM_PrevZoomReqInputWidthOfs
-	{0x0F12, 0x0000},	//REG_TC_PZOOM_PrevZoomReqInputHeightOfs
-	{0x0F12, 0x0A00},	//REG_TC_PZOOM_CapZoomReqInputWidth //2560
-	{0x0F12, 0x0600},	//REG_TC_PZOOM_CapZoomReqInputHeight //1536
-	{0x0F12, 0x0000},	//REG_TC_PZOOM_CapZoomReqInputWidthOfs
-	{0x0F12, 0x0000},	//REG_TC_PZOOM_CapZoomReqInputHeightOfs
+	{0x0F12, 0x0A00},	// REG_TC_PZOOM_PrevZoomReqInputWidth //2560
+	{0x0F12, 0x0600},	// REG_TC_PZOOM_PrevZoomReqInputHeight //1536
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_PrevZoomReqInputWidthOfs
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_PrevZoomReqInputHeightOfs
+	{0x0F12, 0x0A00},	// REG_TC_PZOOM_CapZoomReqInputWidth //2560
+	{0x0F12, 0x0600},	// REG_TC_PZOOM_CapZoomReqInputHeight //1536
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_CapZoomReqInputWidthOfs
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_CapZoomReqInputHeightOfs
 
 	{0x002A, 0x047C},
-	{0x0F12, 0x0001},	//REG_TC_THUMB_Thumb_bActive
-	{0x0F12, 0x0320},	//REG_TC_THUMB_Thumb_uWidth //800
-	{0x0F12, 0x01E0},	//REG_TC_THUMB_Thumb_uHeight //480
+	{0x0F12, 0x0001},	// REG_TC_THUMB_Thumb_bActive
+	{0x0F12, 0x0320},	// REG_TC_THUMB_Thumb_uWidth //800
+	{0x0F12, 0x01E0},	// REG_TC_THUMB_Thumb_uHeight //480
 
 	{0x002A, 0x02A6},
-	{0x0F12, 0x0320},	//REG_0TC_PCFG_usWidth //800
-	{0x0F12, 0x01E0},	//REG_0TC_PCFG_usHeight //480
+	{0x0F12, 0x0320},	// REG_0TC_PCFG_usWidth //800
+	{0x0F12, 0x01E0},	// REG_0TC_PCFG_usHeight //480
 
 	{0x002A, 0x0398},
-	{0x0F12, 0x0320},	//REG_0TC_CCFG_usWidth //800
-	{0x0F12, 0x01E0},	//REG_0TC_CCFG_usHeight //480
+	{0x0F12, 0x0320},	// REG_0TC_CCFG_usWidth //800
+	{0x0F12, 0x01E0},	// REG_0TC_CCFG_usHeight //480
 
 	{0x002A, 0x0266},
-	{0x0F12, 0x0000},	//REG_TC_GP_ActivePrevConfig
+	{0x0F12, 0x0000},	// REG_TC_GP_ActivePrevConfig
 	{0x002A, 0x026A},
-	{0x0F12, 0x0001},	//REG_TC_GP_PrevOpenAfterChange
+	{0x0F12, 0x0001},	// REG_TC_GP_PrevOpenAfterChange
 	{0x002A, 0x024E},
-	{0x0F12, 0x0001},	//REG_TC_GP_NewConfigSync
+	{0x0F12, 0x0001},	// REG_TC_GP_NewConfigSync
 	{0x002A, 0x0268},
-	{0x0F12, 0x0001},	//REG_TC_GP_PrevConfigChanged
+	{0x0F12, 0x0001},	// REG_TC_GP_PrevConfigChanged
 	{0x002A, 0x0270},
-	{0x0F12, 0x0001},	//REG_TC_GP_CapConfigChanged
+	{0x0F12, 0x0001},	// REG_TC_GP_CapConfigChanged
 };
 
 //1024X768 YUV (Preview and Capture)
@@ -5992,107 +6193,172 @@ LOCAL SENSOR_REG_T s5k4ec_1024X768[] = {
 	{0x0028, 0x7000},
 
 	{0x002A, 0x18AC},
-	{0x0F12, 0x0060},	//	#senHal_uAddColsBin 	//
-	{0x0F12, 0x0060},	//	#senHal_uAddColsNoBin	//
-	{0x0F12, 0x07DC},	//05C0	//	#senHal_uMinColsBin 	//
-	{0x0F12, 0x05C0},	//	#senHal_uMinColsNoBin	//
+	{0x0F12, 0x0060},	// senHal_uAddColsBin
+	{0x0F12, 0x0060},	// senHal_uAddColsNoBin
+	{0x0F12, 0x07DC},	// senHal_uMinColsBin
+	{0x0F12, 0x05C0},	// senHal_uMinColsNoBin
 
 	{0x002A, 0x02A6},
-	{0x0F12, 0x0400},	//	#REG_0TC_PCFG_usWidth  //Hsize	: 1024		//
-	{0x0F12, 0x0300},	//	#REG_0TC_PCFG_usHeight //Vsize	: 768		//
+	{0x0F12, 0x0400},	// REG_0TC_PCFG_usWidth  //Hsize	: 1024
+	{0x0F12, 0x0300},	// REG_0TC_PCFG_usHeight //Vsize	: 768
+	{0x002A, 0x0398},
+	{0x0F12, 0x0400},	// REG_0TC_CCFG_usWidth
+	{0x0F12, 0x0300},	// REG_0TC_CCFG_usHeight
 
 	{0x002A, 0x0250},
-	{0x0F12, 0x0A00},	//#REG_TC_GP_PrevReqInputWidth	//Sensor Crop Width  2560
-	{0x0F12, 0x0780},	//#REG_TC_GP_PrevReqInputHeight //Sensor Crop Height 1920
-	{0x0F12, 0x0010},	//#REG_TC_GP_PrevInputWidthOfs	//Sensor HOffset	16 = (2592-2560)/2
-	{0x0F12, 0x000C},	//#REG_TC_GP_PrevInputHeightOfs //Sensor VOffset	12 = (1944-1920)/2
-	{0x0F12, 0x0A00},	//#REG_TC_GP_CapReqInputWidth	//Sensor Crop Width  2560
-	{0x0F12, 0x0780},	//#REG_TC_GP_CapReqInputHeight	//Sensor Crop Height 1920
-	{0x0F12, 0x0010},	//#REG_TC_GP_CapInputWidthOfs	//Sensor HOffset	16 = (2592-2560)/2
-	{0x0F12, 0x000C},	//#REG_TC_GP_CapInputHeightOfs	//Sensor VOffset	12 = (1944-1920)/2
+	{0x0F12, 0x0A00},	// REG_TC_GP_PrevReqInputWidth	//Sensor Crop Width  2560
+	{0x0F12, 0x0780},	// REG_TC_GP_PrevReqInputHeight //Sensor Crop Height 1920
+	{0x0F12, 0x0010},	// REG_TC_GP_PrevInputWidthOfs	//Sensor HOffset	16 = (2592-2560)/2
+	{0x0F12, 0x000C},	// REG_TC_GP_PrevInputHeightOfs //Sensor VOffset	12 = (1944-1920)/2
+	{0x0F12, 0x0A00},	// REG_TC_GP_CapReqInputWidth	//Sensor Crop Width  2560
+	{0x0F12, 0x0780},	// REG_TC_GP_CapReqInputHeight	//Sensor Crop Height 1920
+	{0x0F12, 0x0010},	// REG_TC_GP_CapInputWidthOfs	//Sensor HOffset	16 = (2592-2560)/2
+	{0x0F12, 0x000C},	// REG_TC_GP_CapInputHeightOfs	//Sensor VOffset	12 = (1944-1920)/2
 
 	{0x002A, 0x0494},
-	{0x0F12, 0x0A00},	//#REG_TC_PZOOM_PrevZoomReqInputWidth		//ISP	Input Width 2560
-	{0x0F12, 0x0780},	//#REG_TC_PZOOM_PrevZoomReqInputHeight		//ISP	Input Height	1920
-	{0x0F12, 0x0000},	//#REG_TC_PZOOM_PrevZoomReqInputWidthOfs	//ISP	Input HOffset	0
-	{0x0F12, 0x0000},	//#REG_TC_PZOOM_PrevZoomReqInputHeightOfs	//ISP	Input VOffset	0
-	{0x0F12, 0x0A00},	//#REG_TC_PZOOM_CapZoomReqInputWidth		//ISP	Input Width 2560
-	{0x0F12, 0x0780},	//#REG_TC_PZOOM_CapZoomReqInputHeight		//ISP	Input Height	1920
-	{0x0F12, 0x0000},	//#REG_TC_PZOOM_CapZoomReqInputWidthOfs 	//ISP	Input HOffset	0
-	{0x0F12, 0x0000},	//#REG_TC_PZOOM_CapZoomReqInputHeightOfs	//ISP	Input VOffset	0
+	{0x0F12, 0x0A00},	// REG_TC_PZOOM_PrevZoomReqInputWidth		//ISP	Input Width 2560
+	{0x0F12, 0x0780},	// REG_TC_PZOOM_PrevZoomReqInputHeight		//ISP	Input Height	1920
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_PrevZoomReqInputWidthOfs	//ISP	Input HOffset	0
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_PrevZoomReqInputHeightOfs	//ISP	Input VOffset	0
+	{0x0F12, 0x0A00},	// REG_TC_PZOOM_CapZoomReqInputWidth		//ISP	Input Width 2560
+	{0x0F12, 0x0780},	// REG_TC_PZOOM_CapZoomReqInputHeight		//ISP	Input Height	1920
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_CapZoomReqInputWidthOfs 	//ISP	Input HOffset	0
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_CapZoomReqInputHeightOfs	//ISP	Input VOffset	0
 
 	{0x002A, 0x0262},
-	{0x0F12, 0x0001},	//	#REG_TC_GP_bUseReqInputInPre	//
-	{0x0F12, 0x0001},	//	#REG_TC_GP_bUseReqInputInCap	//
-
+	{0x0F12, 0x0001},	// REG_TC_GP_bUseReqInputInPre
+	{0x0F12, 0x0001},	// REG_TC_GP_bUseReqInputInCap
 
 	{0x002A, 0x0266},
-	{0x0F12, 0x0000},	//	#REG_TC_GP_ActivePrevConfig 	//
+	{0x0F12, 0x0000},	// REG_TC_GP_ActivePrevConfig
 	{0x002A, 0x026A},
-	{0x0F12, 0x0001},	//	#REG_TC_GP_PrevOpenAfterChange	//
+	{0x0F12, 0x0001},	// REG_TC_GP_PrevOpenAfterChange
 	{0x002A, 0x024E},
-	{0x0F12, 0x0001},	//	#REG_TC_GP_NewConfigSync		//
+	{0x0F12, 0x0001},	// REG_TC_GP_NewConfigSync
 	{0x002A, 0x0268},
-	{0x0F12, 0x0001},	//	#REG_TC_GP_PrevConfigChanged	//
+	{0x0F12, 0x0001},	// REG_TC_GP_PrevConfigChanged
 	{0x002A, 0x0270},
-	{0x0F12, 0x0001},	//	#REG_TC_GP_CapConfigChanged 	//
+	{0x0F12, 0x0001},	// REG_TC_GP_CapConfigChanged
 };
 
-// 1280X960 YUV Preview/Capture Mode
-// Heavily Based around 1280x720 register values
-// Experimental version
+//1280X960 YUV (Preview and Capture)
 LOCAL SENSOR_REG_T s5k4ec_1280X960[] = {
 	{0xFCFC, 0xD000},
 	{0x0028, 0x7000},
 
 	{0x002A, 0x18AC},
-	{0x0F12, 0x0060},	// #senHal_uAddColsBin
-	{0x0F12, 0x0060},	// #senHal_uAddColsNoBin
-	{0x0F12, 0x07DC},	// #senHal_uMinColsBin
-	{0x0F12, 0x05C0},	// #senHal_uMinColsNoBin
+	{0x0F12, 0x0060},	// senHal_uAddColsBin
+	{0x0F12, 0x0060},	// senHal_uAddColsNoBin
+	{0x0F12, 0x07DC},	// senHal_uMinColsBin
+	{0x0F12, 0x05C0},	// senHal_uMinColsNoBin
+
+	// Output Window
+	{0x002A, 0x02A6},
+	{0x0F12, 0x0500},	// REG_0TC_PCFG_usWidth   //Hsize: 1280
+	{0x0F12, 0x03C0},	// REG_0TC_PCFG_usHeight  //Vsize: 960
+	{0x002A, 0x0398},
+	{0x0F12, 0x0500},	// REG_0TC_CCFG_usWidth
+	{0x0F12, 0x03C0},	// REG_0TC_CCFG_usHeight
 
 	// Input Window
-	{0x002A, 0x02A6},
-	{0x0F12, 0x0500},	// #REG_0TC_PCFG_usWidth   //Hsize: 1280
-	{0x0F12, 0x03C0},	// #REG_0TC_PCFG_usHeight  //Vsize: 960
-
 	{0x002A, 0x0250},
-	{0x0F12, 0x0A00},	//REG_TC_GP_PrevReqInputWidth //Sensor Crop Width 2560
-	{0x0F12, 0x0780},	//REG_TC_GP_PrevReqInputHeight //Sensor Crop Height 1920
-	{0x0F12, 0x0010},	//REG_TC_GP_PrevInputWidthOfs //Sensor HOffset 16 = (2592-2560)/2
-	{0x0F12, 0x000C},	//REG_TC_GP_PrevInputHeightOfs //Sensor VOffset 12 = (1944-1920)/2
+	{0x0F12, 0x0A00},	// REG_TC_GP_PrevReqInputWidth //Sensor Crop Width 2560
+	{0x0F12, 0x0780},	// REG_TC_GP_PrevReqInputHeight //Sensor Crop Height 1920
+	{0x0F12, 0x0010},	// REG_TC_GP_PrevInputWidthOfs //Sensor HOffset 16 = (2592-2560)/2
+	{0x0F12, 0x000C},	// REG_TC_GP_PrevInputHeightOfs //Sensor VOffset 12 = (1944-1920)/2
+	{0x0F12, 0x0A00},	// REG_TC_GP_CapReqInputWidth //Sensor Crop Width 2560
+	{0x0F12, 0x0780},	// REG_TC_GP_CapReqInputHeight //Sensor Crop Height 1920
+	{0x0F12, 0x0010},	// REG_TC_GP_CapInputWidthOfs //Sensor HOffset 16 = (2592-2560)/2
+	{0x0F12, 0x000C},	// REG_TC_GP_CapInputHeightOfs //Sensor VOffset	12 = (1944-1920)/2
 
-
-	{0x0F12, 0x0A00},	//REG_TC_GP_CapReqInputWidth //Sensor Crop Width 2560
-	{0x0F12, 0x0780},	//REG_TC_GP_CapReqInputHeight //Sensor Crop Height 1920
-	{0x0F12, 0x0010},	//REG_TC_GP_CapInputWidthOfs //Sensor HOffset 16 = (2592-2560)/2
-	{0x0F12, 0x000C},	//REG_TC_GP_CapInputHeightOfs //Sensor VOffset	12 = (1944-1920)/2
-
-	{0x002A, 0x0494},
-	{0x0F12, 0x0A00},	//REG_TC_PZOOM_PrevZoomReqInputWidth //ISP  Input Width 2560
-	{0x0F12, 0x0780},	//REG_TC_PZOOM_PrevZoomReqInputHeight //ISP  Input Height 1960
-	{0x0F12, 0x0000},	//REG_TC_PZOOM_PrevZoomReqInputWidthOfs //ISP  Input HOffset 0
-	{0x0F12, 0x0000},	//REG_TC_PZOOM_PrevZoomReqInputHeightOfs //ISP  Input VOffset 0
-
-	{0x0F12, 0x0A00},	//REG_TC_PZOOM_CapZoomReqInputWidth ISP  Input Width 2560
-	{0x0F12, 0x0780},	//REG_TC_PZOOM_CapZoomReqInputHeight //ISP  Input Height 1920
-	{0x0F12, 0x0000},	//REG_TC_PZOOM_CapZoomReqInputWidthOfs //ISP  Input HOffset 0
-	{0x0F12, 0x0000},	//REG_TC_PZOOM_CapZoomReqInputHeightOfs //ISP  Input VOffset 0
+// 	{0x0F12, 0x0001},	// REG_TC_GP_InputsChangeRequest
 
 	{0x002A, 0x0262},
-	{0x0F12, 0x0001},	//	#REG_TC_GP_bUseReqInputInPre	//
-	{0x0F12, 0x0001},	//	#REG_TC_GP_bUseReqInputInCap	//
+	{0x0F12, 0x0001},	// REG_TC_GP_bUseReqInputInPre
+	{0x0F12, 0x0001},	// REG_TC_GP_bUseReqInputInCap
+
+	{0x002A, 0x0494},
+	{0x0F12, 0x0A00},	// REG_TC_PZOOM_PrevZoomReqInputWidth //ISP  Input Width 2560
+	{0x0F12, 0x0780},	// REG_TC_PZOOM_PrevZoomReqInputHeight //ISP  Input Height 1960
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_PrevZoomReqInputWidthOfs //ISP  Input HOffset 0
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_PrevZoomReqInputHeightOfs //ISP  Input VOffset 0
+	{0x0F12, 0x0A00},	// REG_TC_PZOOM_CapZoomReqInputWidth ISP  Input Width 2560
+	{0x0F12, 0x0780},	// REG_TC_PZOOM_CapZoomReqInputHeight //ISP  Input Height 1920
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_CapZoomReqInputWidthOfs //ISP  Input HOffset 0
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_CapZoomReqInputHeightOfs //ISP  Input VOffset 0
+
 
 	{0x002A, 0x0266},
-	{0x0F12, 0x0000},	//	#REG_TC_GP_ActivePrevConfig 	//
+	{0x0F12, 0x0000},	// REG_TC_GP_ActivePrevConfig
 	{0x002A, 0x026A},
-	{0x0F12, 0x0001},	//	#REG_TC_GP_PrevOpenAfterChange	//
+	{0x0F12, 0x0001},	// REG_TC_GP_PrevOpenAfterChange
 	{0x002A, 0x024E},
-	{0x0F12, 0x0001},	//	#REG_TC_GP_NewConfigSync		//
+	{0x0F12, 0x0001},	// REG_TC_GP_NewConfigSync
 	{0x002A, 0x0268},
-	{0x0F12, 0x0001},	//	#REG_TC_GP_PrevConfigChanged	//
+	{0x0F12, 0x0001},	// REG_TC_GP_PrevConfigChanged
 	{0x002A, 0x0270},
-	{0x0F12, 0x0001},	//	#REG_TC_GP_CapConfigChanged 	//
+	{0x0F12, 0x0001},	// REG_TC_GP_CapConfigChanged
+};
+
+//1408x1056 YUV (Preview and Capture)
+// Experimental 1080p mode @ 11 fps
+// This should be 1440X1080, but anything 1408x1056 messes up the
+// output video. Also using 1408x1056 will increase the actual
+// framerate from 10fps to 11 fps.
+LOCAL SENSOR_REG_T s5k4ec_1408x1056[] = {
+	{0xFCFC, 0xD000},
+	{0x0028, 0x7000},
+
+	{0x002A, 0x18AC},
+	{0x0F12, 0x0060},	// senHal_uAddColsBin
+	{0x0F12, 0x0060},	// senHal_uAddColsNoBin
+	{0x0F12, 0x07DC},	// senHal_uMinColsBin
+	{0x0F12, 0x05C0},	// senHal_uMinColsNoBin
+
+	// Output Window
+	{0x002A, 0x02A6},
+	{0x0F12, 0x0580},	// REG_0TC_PCFG_usWidth   //Hsize: 1408
+	{0x0F12, 0x0420},	// REG_0TC_PCFG_usHeight  //Vsize: 1056
+	{0x002A, 0x0398},
+	{0x0F12, 0x0580},	// REG_0TC_CCFG_usWidth
+	{0x0F12, 0x0420},	// REG_0TC_CCFG_usHeight
+
+	// Input Window
+	{0x002A, 0x0250},
+	{0x0F12, 0x0A00},	// REG_TC_GP_PrevReqInputWidth //Sensor Crop Width 2560
+	{0x0F12, 0x0780},	// REG_TC_GP_PrevReqInputHeight //Sensor Crop Height 1920
+	{0x0F12, 0x0010},	// REG_TC_GP_PrevInputWidthOfs //Sensor HOffset 16 = (2592-2560)/2
+	{0x0F12, 0x000C},	// REG_TC_GP_PrevInputHeightOfs //Sensor VOffset 12 = (1944-1920)/2
+	{0x0F12, 0x0A00},	// REG_TC_GP_CapReqInputWidth //Sensor Crop Width 2560
+	{0x0F12, 0x0780},	// REG_TC_GP_CapReqInputHeight //Sensor Crop Height 1920
+	{0x0F12, 0x0010},	// REG_TC_GP_CapInputWidthOfs //Sensor HOffset 16 = (2592-2560)/2
+	{0x0F12, 0x000C},	// REG_TC_GP_CapInputHeightOfs //Sensor VOffset	12 = (1944-1920)/2
+
+	{0x002A, 0x0262},
+	{0x0F12, 0x0001},	// REG_TC_GP_bUseReqInputInPre
+	{0x0F12, 0x0001},	// REG_TC_GP_bUseReqInputInCap
+
+	{0x002A, 0x0494},
+	{0x0F12, 0x0A00},	// REG_TC_PZOOM_PrevZoomReqInputWidth //ISP  Input Width 2560
+	{0x0F12, 0x0780},	// REG_TC_PZOOM_PrevZoomReqInputHeight //ISP  Input Height 1960
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_PrevZoomReqInputWidthOfs //ISP  Input HOffset 0
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_PrevZoomReqInputHeightOfs //ISP  Input VOffset 0
+	{0x0F12, 0x0A00},	// REG_TC_PZOOM_CapZoomReqInputWidth ISP  Input Width 2560
+	{0x0F12, 0x0780},	// REG_TC_PZOOM_CapZoomReqInputHeight //ISP  Input Height 1920
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_CapZoomReqInputWidthOfs //ISP  Input HOffset 0
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_CapZoomReqInputHeightOfs //ISP  Input VOffset 0
+
+
+	{0x002A, 0x0266},
+	{0x0F12, 0x0000},	// REG_TC_GP_ActivePrevConfig
+	{0x002A, 0x026A},
+	{0x0F12, 0x0001},	// REG_TC_GP_PrevOpenAfterChange
+	{0x002A, 0x024E},
+	{0x0F12, 0x0001},	// REG_TC_GP_NewConfigSync
+	{0x002A, 0x0268},
+	{0x0F12, 0x0001},	// REG_TC_GP_PrevConfigChanged
+	{0x002A, 0x0270},
+	{0x0F12, 0x0001},	// REG_TC_GP_CapConfigChanged
 };
 
 //1600X1200  YUV Mode (Capture Only)
@@ -6102,39 +6368,39 @@ LOCAL SENSOR_REG_T s5k4ec_1600X1200[] = {
 	{0x0028, 0x7000},
 
 	{0x002A, 0x18AC},
-	{0x0F12, 0x0060},	//senHal_uAddColsBin
-	{0x0F12, 0x0060},	//senHal_uAddColsNoBin
-	{0x0F12, 0x06C8},	//senHal_uMinColsBin
-	{0x0F12, 0x06C8},	//senHal_uMinColsNoBin
+	{0x0F12, 0x0060},	// senHal_uAddColsBin
+	{0x0F12, 0x0060},	// senHal_uAddColsNoBin
+	{0x0F12, 0x06C8},	// senHal_uMinColsBin
+	{0x0F12, 0x06C8},	// senHal_uMinColsNoBin
 
 	{0x002A, 0x0258},
-	{0x0F12, 0x0A00}, 	  /*REG_TC_GP_CapReqInputWidth 2560 */
-	{0x0F12, 0x0780}, 	  /*REG_TC_GP_CapReqInputHeight 1920 */
-	{0x0F12, 0x0010}, 	  /*REG_TC_GP_CapInputWidthOfs (2592-2560)/2 */
-	{0x0F12, 0x000C}, 	  /*REG_TC_GP_CapInputHeightOfs (1944-1920)/2 */
+	{0x0F12, 0x0A00}, 	// REG_TC_GP_CapReqInputWidth 2560
+	{0x0F12, 0x0780}, 	// REG_TC_GP_CapReqInputHeight 1920
+	{0x0F12, 0x0010}, 	// REG_TC_GP_CapInputWidthOfs (2592-2560)/2
+	{0x0F12, 0x000C}, 	// REG_TC_GP_CapInputHeightOfs (1944-1920)/2
 
 	{0x002A, 0x0264},
-	{0x0F12, 0x0001}, 	  /*REG_TC_GP_bUseReqInputInCap */
+	{0x0F12, 0x0001}, 	// REG_TC_GP_bUseReqInputInCap
 
 	{0x002A, 0x049C},
-	{0x0F12, 0x0A00}, 	  /*REG_TC_PZOOM_CapZoomReqInputWidth 2560 */
-	{0x0F12, 0x0780}, 	  /*REG_TC_PZOOM_CapZoomReqInputHeight 1920 */
-	{0x0F12, 0x0000}, 	  /*REG_TC_PZOOM_CapZoomReqInputWidthOfs */
-	{0x0F12, 0x0000}, 	  /*REG_TC_PZOOM_CapZoomReqInputHeightOfs */
+	{0x0F12, 0x0A00}, 	// REG_TC_PZOOM_CapZoomReqInputWidth 2560
+	{0x0F12, 0x0780}, 	// REG_TC_PZOOM_CapZoomReqInputHeight 1920
+	{0x0F12, 0x0000}, 	// REG_TC_PZOOM_CapZoomReqInputWidthOfs
+	{0x0F12, 0x0000}, 	// REG_TC_PZOOM_CapZoomReqInputHeightOfs
 
 	{0x002A, 0x047C},
-	{0x0F12, 0x0001}, 	  /*REG_TC_THUMB_Thumb_bActive */
-	{0x0F12, 0x0280}, 	  /*REG_TC_THUMB_Thumb_uWidth 640 */
-	{0x0F12, 0x01E0}, 	  /*REG_TC_THUMB_Thumb_uHeight 480 */
+	{0x0F12, 0x0001}, 	// REG_TC_THUMB_Thumb_bActive
+	{0x0F12, 0x0280}, 	// REG_TC_THUMB_Thumb_uWidth 640
+	{0x0F12, 0x01E0}, 	// REG_TC_THUMB_Thumb_uHeight 480
 
 	{0x002A, 0x0398},
-	{0x0F12, 0x0640}, 	  /*REG_0TC_CCFG_usWidth 1600 */
-	{0x0F12, 0x04B0}, 	  /*REG_0TC_CCFG_usHeight 1200 */
+	{0x0F12, 0x0640}, 	// REG_0TC_CCFG_usWidth 1600
+	{0x0F12, 0x04B0}, 	// REG_0TC_CCFG_usHeight 1200
 
 	{0x002A, 0x024E},
-	{0x0F12, 0x0001}, 	  /*REG_TC_GP_NewConfigSync */
+	{0x0F12, 0x0001}, 	// REG_TC_GP_NewConfigSync
 	{0x002A, 0x0270},
-	{0x0F12, 0x0001}, 	  /*REG_TC_GP_CapConfigChanged */
+	{0x0F12, 0x0001}, 	// REG_TC_GP_CapConfigChanged
 };
 
 //20480X1536 YUV Mode (Capture Only)
@@ -6149,33 +6415,33 @@ LOCAL SENSOR_REG_T s5k4ec_2048X1536[] = {
 	{0x0F12, 0x06C8},	//senHal_uMinColsNoBin
 
 	{0x002A, 0x0258},
-	{0x0F12, 0x0A00}, 	  /*REG_TC_GP_CapReqInputWidth 2560 */
-	{0x0F12, 0x0780}, 	  /*REG_TC_GP_CapReqInputHeight 1920 */
-	{0x0F12, 0x0010}, 	  /*REG_TC_GP_CapInputWidthOfs (2592-2560)/2 */
-	{0x0F12, 0x000C}, 	  /*REG_TC_GP_CapInputHeightOfs (1944-1920)/2 */
+	{0x0F12, 0x0A00}, 	// REG_TC_GP_CapReqInputWidth 2560
+	{0x0F12, 0x0780}, 	// REG_TC_GP_CapReqInputHeight 1920
+	{0x0F12, 0x0010}, 	// REG_TC_GP_CapInputWidthOfs (2592-2560)/2
+	{0x0F12, 0x000C}, 	// REG_TC_GP_CapInputHeightOfs (1944-1920)/2
 
 	{0x002A, 0x0264},
-	{0x0F12, 0x0001}, 	  /*REG_TC_GP_bUseReqInputInCap */
+	{0x0F12, 0x0001}, 	// REG_TC_GP_bUseReqInputInCap
 
 	{0x002A, 0x049C},
-	{0x0F12, 0x0A00}, 	  /*REG_TC_PZOOM_CapZoomReqInputWidth 2560 */
-	{0x0F12, 0x0780}, 	  /*REG_TC_PZOOM_CapZoomReqInputHeight 1920 */
-	{0x0F12, 0x0000}, 	  /*REG_TC_PZOOM_CapZoomReqInputWidthOfs */
-	{0x0F12, 0x0000}, 	  /*REG_TC_PZOOM_CapZoomReqInputHeightOfs */
+	{0x0F12, 0x0A00}, 	// REG_TC_PZOOM_CapZoomReqInputWidth 2560
+	{0x0F12, 0x0780}, 	// REG_TC_PZOOM_CapZoomReqInputHeight 1920
+	{0x0F12, 0x0000}, 	// REG_TC_PZOOM_CapZoomReqInputWidthOfs
+	{0x0F12, 0x0000}, 	// REG_TC_PZOOM_CapZoomReqInputHeightOfs
 
 	{0x002A, 0x047C},
-	{0x0F12, 0x0001}, 	  /*REG_TC_THUMB_Thumb_bActive */
-	{0x0F12, 0x0280}, 	  /*REG_TC_THUMB_Thumb_uWidth 640 */
-	{0x0F12, 0x01E0}, 	  /*REG_TC_THUMB_Thumb_uHeight 480 */
+	{0x0F12, 0x0001}, 	// REG_TC_THUMB_Thumb_bActive
+	{0x0F12, 0x0280}, 	// REG_TC_THUMB_Thumb_uWidth 640
+	{0x0F12, 0x01E0}, 	// REG_TC_THUMB_Thumb_uHeight 480
 
 	{0x002A, 0x0398},
-	{0x0F12, 0x0800}, 	  /*REG_0TC_CCFG_usWidth 2048 */
-	{0x0F12, 0x0600}, 	  /*REG_0TC_CCFG_usHeight 1536 */
+	{0x0F12, 0x0800}, 	// REG_0TC_CCFG_usWidth 2048
+	{0x0F12, 0x0600}, 	// REG_0TC_CCFG_usHeight 1536
 
 	{0x002A, 0x024E},
-	{0x0F12, 0x0001}, 	  /*REG_TC_GP_NewConfigSync */
+	{0x0F12, 0x0001}, 	// REG_TC_GP_NewConfigSync
 	{0x002A, 0x0270},
-	{0x0F12, 0x0001}, 	  /*REG_TC_GP_CapConfigChanged */
+	{0x0F12, 0x0001}, 	// REG_TC_GP_CapConfigChanged
 };
 
 //2560X1920 YUV Mode (Capture Only)
@@ -6184,39 +6450,39 @@ LOCAL SENSOR_REG_T s5k4ec_2560X1920[] = {
 	{0x0028, 0x7000},
 
 	{0x002A, 0x18AC},
-	{0x0F12, 0x0060},	//senHal_uAddColsBin
-	{0x0F12, 0x0060},	//senHal_uAddColsNoBin
-	{0x0F12, 0x06C8},	//senHal_uMinColsBin
-	{0x0F12, 0x06C8},	//senHal_uMinColsNoBin
+	{0x0F12, 0x0060},	// senHal_uAddColsBin
+	{0x0F12, 0x0060},	// senHal_uAddColsNoBin
+	{0x0F12, 0x06C8},	// senHal_uMinColsBin
+	{0x0F12, 0x06C8},	// senHal_uMinColsNoBin
 
 	{0x002A, 0x0258},
-	{0x0F12, 0x0A00},	/*REG_TC_GP_CapReqInputWidth 2560 */
-	{0x0F12, 0x0780},	/*REG_TC_GP_CapReqInputHeight 1920 */
-	{0x0F12, 0x0010},	/*REG_TC_GP_CapInputWidthOfs (2592-2560)/2 */
-	{0x0F12, 0x000C},	/*REG_TC_GP_CapInputHeightOfs (1944-1920)/2 */
+	{0x0F12, 0x0A00},	// REG_TC_GP_CapReqInputWidth 2560
+	{0x0F12, 0x0780},	// REG_TC_GP_CapReqInputHeight 1920
+	{0x0F12, 0x0010},	// REG_TC_GP_CapInputWidthOfs (2592-2560)/2
+	{0x0F12, 0x000C},	// REG_TC_GP_CapInputHeightOfs (1944-1920)/2
 
 	{0x002A, 0x0264},
-	{0x0F12, 0x0001},	/*REG_TC_GP_bUseReqInputInCap */
+	{0x0F12, 0x0001},	// REG_TC_GP_bUseReqInputInCap
 
 	{0x002A, 0x049C},
-	{0x0F12, 0x0A00},	/*REG_TC_PZOOM_CapZoomReqInputWidth 2560 */
-	{0x0F12, 0x0780},	/*REG_TC_PZOOM_CapZoomReqInputHeight 1920 */
-	{0x0F12, 0x0000},	/*REG_TC_PZOOM_CapZoomReqInputWidthOfs */
-	{0x0F12, 0x0000},	/*REG_TC_PZOOM_CapZoomReqInputHeightOfs */
+	{0x0F12, 0x0A00},	// REG_TC_PZOOM_CapZoomReqInputWidth 2560
+	{0x0F12, 0x0780},	// REG_TC_PZOOM_CapZoomReqInputHeight 1920
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_CapZoomReqInputWidthOfs
+	{0x0F12, 0x0000},	// REG_TC_PZOOM_CapZoomReqInputHeightOfs
 
 	{0x002A, 0x047C},
-	{0x0F12, 0x0001},	/*REG_TC_THUMB_Thumb_bActive */
-	{0x0F12, 0x0280},	/*REG_TC_THUMB_Thumb_uWidth 640 */
-	{0x0F12, 0x01E0},	/*REG_TC_THUMB_Thumb_uHeight 480 */
+	{0x0F12, 0x0001},	// REG_TC_THUMB_Thumb_bActive
+	{0x0F12, 0x0280},	// REG_TC_THUMB_Thumb_uWidth 640
+	{0x0F12, 0x01E0},	// REG_TC_THUMB_Thumb_uHeight 480
 
 	{0x002A, 0x0398},
-	{0x0F12, 0x0A00},	/*REG_0TC_CCFG_usWidth 2560 */
-	{0x0F12, 0x0780},	/*REG_0TC_CCFG_usHeight 1920 */
+	{0x0F12, 0x0A00},	// REG_0TC_CCFG_usWidth 2560
+	{0x0F12, 0x0780},	// REG_0TC_CCFG_usHeight 1920
 
 	{0x002A, 0x024E},
-	{0x0F12, 0x0001},	/*REG_TC_GP_NewConfigSync */
+	{0x0F12, 0x0001},	// REG_TC_GP_NewConfigSync
 	{0x002A, 0x0270},
-	{0x0F12, 0x0001},	/*REG_TC_GP_CapConfigChanged */
+	{0x0F12, 0x0001},	// REG_TC_GP_CapConfigChanged
 };
 
 //==========================================================

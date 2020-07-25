@@ -63,6 +63,7 @@ enum {
 	CAMERA_SCENE_MODE_CANDLELIGHT,
 	CAMERA_SCENE_MODE_FIREWORK,
 	CAMERA_SCENE_MODE_BACKLIGHT,
+	CAMERA_SCENE_MODE_DARK,
 #endif
 	CAMERA_SCENE_MODE_MAX
 };
@@ -291,6 +292,7 @@ const struct str_map scene_mode_map[] = {
 	{"candlelight",     CAMERA_SCENE_MODE_CANDLELIGHT},
 	{"firework",        CAMERA_SCENE_MODE_FIREWORK},
 	{"back-light",      CAMERA_SCENE_MODE_BACKLIGHT},
+	{"dark",            CAMERA_SCENE_MODE_DARK},
 #endif
 	{NULL,              0}
 };
@@ -487,7 +489,7 @@ struct config_element sprd_front_camera_hardware_config[] = {
 	{"picture-format-values", "jpeg"},
 	{"picture-format", "jpeg"},
 	{"jpeg-quality", "100"},
-	{"preview-frame-rate-values", "5,10,12,15,20,25,30"},
+	{"preview-frame-rate-values", "5,10,12,15,20,24,25,30"},
 	{"preview-frame-rate", "25"},
 	{"preview-fps-range-values", "(1000,30000)"},
 	{"preview-fps-range", "1000,30000"},
@@ -608,7 +610,7 @@ struct config_element sprd_back_camera_hardware_config[] = {
 	{"preview-size", "640x480"},
 #else
 #ifdef CONFIG_CAMERA_KANAS
-	{"preview-size-values", "1280x960,1280x720,1024x768,960x540,720x540,800x480,720x480,640x480,352x288,320x240,176x144"},
+	{"preview-size-values", "1408x1056,1280x960,1280x720,1024x768,960x720,960x540,720x540,800x480,720x480,640x480,352x288,320x240,176x144"},
 	{"preview-size", "800x480"},
 #else
 	{"preview-size-values", "1920x1088,1280x960,1280x720,960x540,720x540,720x480,640x480,352x288,320x240,176x144"},
@@ -630,7 +632,7 @@ struct config_element sprd_back_camera_hardware_config[] = {
 	{"picture-format", "jpeg"},
 	{"jpeg-quality", "100"},
 #ifdef CONFIG_CAMERA_KANAS
-	{"preview-frame-rate-values", "7,10,12,15,25,30"},
+	{"preview-frame-rate-values", "7,10,12,15,24,25,30"},
 	{"preview-frame-rate", "30"},
 	{"preview-fps-range-values", "(7000,30000)"},
 	{"preview-fps-range", "7000,30000"},
@@ -651,7 +653,7 @@ struct config_element sprd_back_camera_hardware_config[] = {
 #endif
 	{"effect", "none"},
 #ifdef CONFIG_CAMERA_KANAS
-	{"scene-mode-values", "auto,portrait,landscape,sports,party,beach,sunset,dusk-dawn,fall-color,text,candlelight,firework,back-light,night,hdr"},
+	{"scene-mode-values", "auto,portrait,landscape,sports,party,beach,sunset,dusk-dawn,fall-color,text,candlelight,firework,back-light,night,hdr,dark"},
 #else
 	{"scene-mode-values", "auto,night,portrait,landscape,action,normal,hdr"},
 #endif

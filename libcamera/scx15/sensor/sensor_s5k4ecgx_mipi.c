@@ -25,14 +25,11 @@
 #define WA_BOOST_DDR_FREQ_720P
 
 /*
- * Workaround: Limit Frame rate to 24 fps
- * kanas3g can't seem to reach 30fps and only reaches about 26-27 fps.
- * Since the DCAM line1 tx_error due to overflow is still present
- * (WA_BOOST_DDR_FREQ_720P cannot fully prevent it from happening, sorry),
- * Try to limit the maximum to some arbritrary framerate to save
- * some processing power and help further prevent the said overflow.
+ * Workaround: Limit Frame rate
+ * Allows setting arbritrary limits depending on the resolution.
+ * Write to s_fps_limit the maximum fps desired.
  */
-#define WA_LIMIT_HD_CAM_24FPS
+#define WA_LIMIT_HD_CAM_FPS
 #endif
 
 #include <utils/Log.h>
@@ -67,6 +64,7 @@
  * Or, we can use the camera_light_status_type
  */
 #define LIGHT_STATUS_LOW_LEVEL 0x0032
+#define LIGHT_STATUS_HIGH_LEVEL 0x0082
 #define LIGHT_STATUS_IS_LOW(x) \
 	((x) < LIGHT_STATUS_LOW_LEVEL)
 #define LIGHT_STATUS_IS_NORMAL(x) \
@@ -87,14 +85,14 @@ LOCAL uint8_t s_anti_flicker_mode = 0; //50Hz
 LOCAL uint8_t s_ev_comp_lvl = 3;
 
 LOCAL int16_t s_fps_cur_mode = -1; // current max FPS (abs max is 30)
-LOCAL int16_t s_target_max_fps = -1; // target max FPS
-LOCAL uint16_t s_current_env = 0; // 0 - Norm, 1 - Low Light, 2 - Night
+LOCAL int32_t s_target_max_fps = -1; // target max FPS
 LOCAL uint16_t s_cur_scene = 0;
+LOCAL uint8_t  s_force_set_scene = 1;
 LOCAL uint32_t s_preview_mode = 0;
 LOCAL uint32_t s_white_balance = 0;
 
 // Local copy of Flash state (copied from the global context)
-LOCAL uint8_t s_flash_state = 0; // flash state in the global context
+LOCAL uint8_t  s_flash_state = 0; // flash state in the global context
 LOCAL uint32_t s_torch_mode_en = 0;
 
 LOCAL uint8_t s_fast_ae_en = 0;
@@ -121,12 +119,23 @@ enum {
 	FPS_MODE_25,
 	FPS_MODE_30,
 	FPS_MODE_MANUAL = 64,
-	FPS_MODE_OVERRIDE = 65,  // FPS setting is disabled
 	FPS_MODE_INVALID  = ((uint16_t) -1) >> 1,
 };
 
+LOCAL enum {
+	ENVIRONMENT_NORMAL = 0, // Normal conditions
+	ENVIRONMENT_LOW_LIGHT,  // Low light conditions
+	ENVIRONMENT_DIM,        // Dimly lit (dimmer than Low light)
+	ENVIRONMENT_DIM_FLASH,  // Low Light but flash will overexpose it
+	ENVIRONMENT_LONG_EXPOSURE, // Almost unilluminated, no flash, might need a tripod
+} s_current_env = ENVIRONMENT_NORMAL;
+
 #ifdef WA_BOOST_DDR_FREQ_720P
 LOCAL   int8_t s_ddr_boosted = 0;
+#endif
+
+#ifdef WA_LIMIT_HD_CAM_FPS
+LOCAL  int32_t s_fps_limit = 0;
 #endif
 
 LOCAL uint32_t _s5k4ec_InitExifInfo(void);
@@ -177,6 +186,7 @@ LOCAL uint32_t s5k4ec_set_FPS(uint32_t fps);
 LOCAL uint32_t s5k4ec_set_FPS_mode(uint32_t fps_mode);
 LOCAL uint32_t s5k4ec_set_manual_FPS(uint32_t min, uint32_t max);
 LOCAL void s5k4ec_set_REG_TC_DBG_AutoAlgEnBits(int bit, int set);
+LOCAL const char *s5k4ec_StreamStrerror(int error);
 
 #ifdef WA_BOOST_DDR_FREQ_720P
 LOCAL int8_t s5k4ec_ddr_is_slow(int8_t boost);
@@ -195,7 +205,7 @@ LOCAL SENSOR_REG_TAB_INFO_T s_s5k4ec_resolution_Tab_YUV[] = {
 
 	//YUV422 PREVIEW 2
 	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_1280X960), 1280, 960, 24, SENSOR_IMAGE_FORMAT_YUV422},
-	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_1600X1200), 1600, 1200, 24, SENSOR_IMAGE_FORMAT_YUV422},
+	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_1408x1056), 1408, 1056, 24, SENSOR_IMAGE_FORMAT_YUV422},
 	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_2048X1536), 2048, 1536, 24, SENSOR_IMAGE_FORMAT_YUV422},
 	{ADDR_AND_LEN_OF_ARRAY(s5k4ec_2560X1920), 2560, 1920, 24, SENSOR_IMAGE_FORMAT_YUV422},
 
@@ -268,7 +278,7 @@ LOCAL SENSOR_TRIM_T s_s5k4ec_Resolution_Trim_Tab[]=
 
 	//YUV422 PREVIEW 2
 	{0, 0, 1280, 960, 664, 648, 0, {0, 0, 1280, 960}},
-	{0, 0, 1600, 1200, 664, 648, 0, {0, 0, 1600, 1200}},
+	{0, 0, 1408, 1056, 664, 648, 0, {0, 0, 1408, 1056}},
 	{0, 0, 2048, 1536, 660, 648, 0, {0, 0, 2048, 1536}},
 	{0, 0, 2560, 1920, 660, 648, 0, {0, 0, 2560, 1920}},
 
@@ -572,7 +582,7 @@ LOCAL uint32_t __s5k4ec_PowerOn(uint32_t power_on)
 		Sensor_SetMonitorVoltage(SENSOR_AVDD_CLOSED);
 		SENSOR_Sleep(10);
 	}
-	return 0;
+	return SENSOR_SUCCESS;
 }
 
 LOCAL uint32_t _s5k4ec_PowerOn(uint32_t power_on)
@@ -676,7 +686,7 @@ LOCAL uint32_t _s5k4ec_Identify(__attribute__((unused)) uint32_t param)
 
 		s_fps_cur_mode = -1;
 		s_target_max_fps = -1;
-		s_current_env = 0; // 0 - Norm, 1 - Low Light, 2 - Night
+		s_current_env = ENVIRONMENT_NORMAL;
 		s_cur_scene = 0;
 		s_preview_mode = 0;
 		s_white_balance = 0;
@@ -689,6 +699,10 @@ LOCAL uint32_t _s5k4ec_Identify(__attribute__((unused)) uint32_t param)
 		s_brightness_lvl = 3; // Default value
 		s_metering_mode = CAMERA_AE_CENTER_WEIGHTED;
 		s_hd_applied = 0;
+
+#ifdef WA_LIMIT_HD_CAM_FPS
+		s_fps_limit = 0;
+#endif
 
 		// Local AF states
 		s_focus_mode = 0;
@@ -879,17 +893,80 @@ LOCAL uint32_t _s5k4ec_set_anti_flicker(uint32_t mode)
 LOCAL uint32_t _s5k4ec_set_video_mode(uint32_t mode)
 {
 	struct camera_context *cxt = camera_get_cxt();
-	s_target_max_fps = cxt->cmr_set.frame_rate;
+	SENSOR_REG_TAB_INFO_T *res;
 
 	SENSOR_PRINT_HIGH("mode = 0x%X", mode);
 
 	SENSOR_PRINT_HIGH("cxt->sn_cxt.preview_mode=%u s_preview_mode=%u", cxt->sn_cxt.preview_mode, s_preview_mode);
-	if (1280 <= s_s5k4ec_resolution_Tab_YUV[cxt->sn_cxt.preview_mode].width){
+	res = &s_s5k4ec_resolution_Tab_YUV[cxt->sn_cxt.preview_mode];
+
+	/* Define some artificial limits depending on the resolution.
+	 * On kanas3g, 1280x960 recording is possible which is nice
+	 * because it's in the middle 720p(960x720) 1080p(1440x1080) recording.
+	 * (Keep in mind this is 4:3, comparing to 16:9 is just unfair.
+	 * But due to the configuration limits, we can only get up to 27 fps.
+	 *
+	 * Same story with 14**x10** resolution (the 4:3 1080p) but with
+	 * drastic tradeoffs causing it to go up to 11 fps, tops.
+	 *
+	 * Limiting to 24 fps on 1280x960 not only make the fps look like
+	 * it was shoot in film but also frees up a bit of processing power.
+	 * DCAM line1 tx_error is still present but limiting it to 24 fps
+	 * will make it even less frequent.
+	 *
+	 * Funny note, DCAM line1 tx_errors is highly unlikely to occur on
+	 * 14**x10** because the bottleneck on that case is actually the
+	 * camera not the memory bus.
+	 */
+#ifdef WA_LIMIT_HD_CAM_FPS
+	if (1400 <= res->width) // experimental 1080p mode
+		s_fps_limit = 11;
+	else if ((1280*960) <= (res->width * res->height))
+		s_fps_limit = 24;
+	else
+		s_fps_limit = 0;
+#endif
+
+
+	/*
+	 * There are camera apps that set the FPS after StreamOn() is done.
+	 * We need to re-apply the FPS settings when that happens.
+	 */
+	if ((s_target_max_fps != (int32_t) cxt->cmr_set.frame_rate) && s_stream_is_on) {
+		s_fps_cur_mode = FPS_MODE_INVALID;
+#ifdef WA_LIMIT_HD_CAM_FPS
+		if ((s_fps_limit) &&
+		    (((int32_t)cxt->cmr_set.frame_rate > s_fps_limit) || (cxt->cmr_set.frame_rate == 0))) {
+			SENSOR_PRINT_HIGH("workaround: Reapplying max FPS limit to %d", s_fps_limit);
+			if (!cxt->cmr_set.frame_rate) // Automatic Framerate is requested
+				s5k4ec_set_manual_FPS(0, s_fps_limit);
+			else
+				s5k4ec_set_manual_FPS(s_fps_limit, s_fps_limit);
+		}
+#endif
+
+		if (s_fps_cur_mode == FPS_MODE_INVALID)
+			s5k4ec_set_FPS(cxt->cmr_set.frame_rate);
+	}
+	s_target_max_fps = cxt->cmr_set.frame_rate;
+
+	/*
+	 * Apply the so called HD camcorder settings.
+	 * These settings are designed to enhance the overall perceived
+	 * video quality. But, we only apply this to the HD resolutions
+	 * which is anything above 1280*720.
+	 * Also 960*720, according to Wikipedia, is also an HD resolution.
+	 */
+	if (((1280 <= res->width) && (720 <= res->height)) || // anything above 720p
+	    ((960 == res->width) && (720 == res->height)) // 960x720 case
+	) {
 		if (!s_hd_applied) {
 			SENSOR_PRINT_HIGH("Applying HD camcorder settings");
 			s5k4ec_I2C_write(s5k4ec_enable_camcorder);
 			s_hd_applied = 1;
 
+			// default HD settings is too bright.
+			// _s5k4ec_set_ev will apply an offset when s_hd_applied == 1
 			_s5k4ec_set_ev(s_ev_comp_lvl);
 		}
 	} else if (s_hd_applied) {
@@ -897,15 +974,10 @@ LOCAL uint32_t _s5k4ec_set_video_mode(uint32_t mode)
 		s5k4ec_I2C_write(s5k4ec_disable_camcorder);
 
 		// revert AE settings
-		//_s5k4ec_set_brightness(s_brightness_lvl);
 		_s5k4ec_set_ev(s_ev_comp_lvl);
 
 		// Revert Sharpness setting, default level is 3
 		s5k4ec_set_sharpness(s_sharpness_lvl);
-
-		// Revert Metering setting
-		// s5k4ec_set_Metering(s_metering_mode);
-
 		s_hd_applied = 0;
 	}
 
@@ -940,12 +1012,12 @@ LOCAL uint32_t _s5k4ec_set_scene_mode(uint32_t mode)
 {
 	SENSOR_PRINT_HIGH("Apply Scene mode %u", mode);
 
-	if (s_cur_scene == mode) {
+	if ((s_cur_scene == mode) && (s_force_set_scene == 0)) {
 		SENSOR_PRINT_HIGH("Already applied");
 		return SENSOR_SUCCESS;
 	}
 
-	if (mode != CAMERA_SCENE_MODE_AUTO) {
+	if ((mode != CAMERA_SCENE_MODE_AUTO) && (mode != s_cur_scene)) {
 		SENSOR_PRINT_HIGH("Trying to revert changes from the previous scene mode");
 		switch (s_cur_scene) {
 		case CAMERA_SCENE_MODE_PORTRAIT:
@@ -956,15 +1028,18 @@ LOCAL uint32_t _s5k4ec_set_scene_mode(uint32_t mode)
 			s5k4ec_I2C_write(s5k4ec_scene_revert_sharpness0);
 			s5k4ec_set_Metering(s_metering_mode);
 			break;
-		case CAMERA_SCENE_MODE_NIGHT:
-			s5k4ec_I2C_write(s5k4ec_scene_revert_night);
+		case CAMERA_SCENE_MODE_DARK:
 			s5k4ec_I2C_write(s5k4ec_scene_revert_gain);
+			/* Fall-through */
+		case CAMERA_SCENE_MODE_NIGHT:
+			s5k4ec_I2C_write(s5k4ec_scene_revert_exp);
+			s5k4ec_I2C_write(s5k4ec_scene_revert_night);
 			__s5k4ecgx_set_focus_mode(s_focus_mode);
 			break;
 		case CAMERA_SCENE_MODE_SPORTS:
 		case CAMERA_SCENE_MODE_FIREWORK:
 			s5k4ec_I2C_write(s5k4ec_scene_revert_sports);
-			s5k4ec_I2C_write(s5k4ec_scene_revert_gain);
+			s5k4ec_I2C_write(s5k4ec_scene_revert_exp);
 			// _s5k4ec_set_iso(s_ISO_mode); // Moved to StreamOn()
 			break;
 		case CAMERA_SCENE_MODE_PARTY:
@@ -998,6 +1073,16 @@ LOCAL uint32_t _s5k4ec_set_scene_mode(uint32_t mode)
 	switch (mode) {
 	case CAMERA_SCENE_MODE_AUTO:
 		s5k4ec_I2C_write(s5k4ec_scene_off);
+		break;
+
+	/*
+	 * This mode is essentially night scene mode with drastically longer
+	 * Exposure time and less aggressive Auto Gain/Auto ISO.
+	 * You'll need a patched sprd_dcam kernel module to avoid getting
+	 * timeout errors, and also a tripod.
+	 */
+	case CAMERA_SCENE_MODE_DARK:
+		s5k4ec_I2C_write(s5k4ec_scene_dark);
 		break;
 	case CAMERA_SCENE_MODE_NIGHT:
 		s5k4ec_I2C_write(s5k4ec_scene_night);
@@ -1049,7 +1134,7 @@ LOCAL uint32_t _s5k4ec_set_scene_mode(uint32_t mode)
 	case CAMERA_SCENE_MODE_NORMAL:
 	default:
 		SENSOR_PRINT_ERR("Undefined Scene mode %u", mode);
-	return SENSOR_SUCCESS; // ignore the error
+		return SENSOR_SUCCESS; // ignore the error
 	}
 
 	if (mode == CAMERA_SCENE_MODE_HDR)
@@ -1058,7 +1143,66 @@ LOCAL uint32_t _s5k4ec_set_scene_mode(uint32_t mode)
 		Sensor_SetSensorExifInfo(SENSOR_EXIF_CTRL_SCENECAPTURETYPE, s_cur_scene);
 
 	s_cur_scene = mode;
+	s_force_set_scene = 0;
 	return SENSOR_SUCCESS;
+}
+
+/*
+ * Checks if either of these two sets of conditions are fully met:
+ *    A.1. Flash will be used.
+ *    A.2. Scene mode is neither Dark or Night
+ *
+ *    B.1. Flash will be used.
+ *    B.2. Scene mode is either Dark or Night
+ *    B.3. With flash on, the environment is acceptably illuminated.
+ *
+ * Returns 1 if at least one set is met, otherwise 0.
+ */
+LOCAL uint8_t _s5k4ec_nightscene_flash(void)
+{
+	uint32_t lux;
+	uint16_t frame_time;
+	/*
+	 * We could actually support flash with Night Scene mode
+	 * but not the full "High Light" flash since it
+	 * won't last the entire shutter cycle. We could, however, use
+	 * the dimmer "Torch" flash (basically the flashlight mode)
+	 * to act as the supplemental light source. The longer
+	 * exposure should compensate for the drastically dimmer light.
+	 */
+	if (FLASH_CLOSE == s_flash_state)
+		return 0;
+
+	if ((s_cur_scene != CAMERA_SCENE_MODE_NIGHT) &&
+	    (s_cur_scene != CAMERA_SCENE_MODE_DARK))
+		return 1;
+
+	SENSOR_PRINT_HIGH("It seems that flash will be used, using torch instead");
+	s_torch_mode_en = 1;
+	Sensor_SetFlash(FLASH_OPEN/*FLASH_TORCH*/);
+
+	s5k4ec_set_ae_awb_enable(1);
+	s5k4ecgx_fast_ae(1);
+	s5k4ec_wait_until_ae_stable();
+	s5k4ecgx_fast_ae(0);
+
+	/*
+	 * It is possible that the sensor may use the longer exposure time
+	 * even with the flash and eventually lead to an overexposed image.
+	 * After making sure that AE is stable, check the lux levels
+	 * if it's still dark enough for the long exposure.
+	 */
+	frame_time = s5k4ecgx_get_frame_time();
+	SENSOR_Sleep(frame_time * 2);
+	lux = s5k4ec_lightcheck();
+	if (lux > LIGHT_STATUS_LOW_LEVEL) {
+		SENSOR_PRINT_HIGH("The image may become over-exposed, limiting EI");
+		s5k4ec_I2C_write(s5k4ec_scene_revert_exp);
+		s5k4ec_I2C_write(s5k4ec_night_mode_revert_LEI);
+		s_current_env = ENVIRONMENT_DIM_FLASH;
+		return 1;
+	}
+	return 0;
 }
 
 LOCAL uint32_t _s5k4ec_BeforeSnapshot(uint32_t param)
@@ -1074,9 +1218,7 @@ LOCAL uint32_t _s5k4ec_BeforeSnapshot(uint32_t param)
 	// Use the global context to find out whether we are using
 	// camera flash or not
 	// NOTE: Night and Firework scenes, and HDR don't use flash
-	if ((FLASH_CLOSE != s_flash_state) &&
-	    (s_cur_scene != CAMERA_SCENE_MODE_NIGHT) &&
-	    (s_cur_scene != CAMERA_SCENE_MODE_FIREWORK)){
+	if ((FLASH_CLOSE != s_flash_state) && _s5k4ec_nightscene_flash()) {
 		SENSOR_PRINT_HIGH("Flash will be used, not applying any low light tweaks");
 	} else if (LIGHT_STATUS_IS_LOW(s5k4ec_lightcheck())) {
 		/*
@@ -1086,33 +1228,14 @@ LOCAL uint32_t _s5k4ec_BeforeSnapshot(uint32_t param)
 		 * guarantee that the flash would cover a complete cycle
 		 */
 		SENSOR_PRINT_HIGH("Low light environment detected");
-		if (s_cur_scene == CAMERA_SCENE_MODE_NIGHT ||
-		    s_cur_scene == CAMERA_SCENE_MODE_FIREWORK) {
+		if (s_cur_scene == CAMERA_SCENE_MODE_NIGHT) {
 			SENSOR_PRINT_HIGH("Night mode activate");
 			s5k4ec_I2C_write(s5k4ec_night_mode_On);
-			s_current_env = 2;
-
-			/*
-			 * We could actually support flash with Night Scene mode
-			 * but not the full "High Light" flash since it
-			 * won't last the entire shutter cycle. We could, however, use
-			 * the dimmer "Torch" flash (basically the flashlight mode)
-			 * to act as the supplemental light source. The longer
-			 * exposure should compensate for the drastically dimmer light.
-			 */
-			if (s_flash_state) {
-				SENSOR_PRINT_HIGH("It seems that flash will be used, using torch instead");
-				s_torch_mode_en = 1;
-				Sensor_SetFlash(FLASH_OPEN/*FLASH_TORCH*/);
-
-				s5k4ec_set_ae_awb_enable(1);
-				s5k4ecgx_fast_ae(1);
-
-				s5k4ec_wait_until_ae_stable();
-
-				s5k4ecgx_fast_ae(0);
-				s5k4ec_set_ae_awb_enable(0);
-			}
+			s_current_env = ENVIRONMENT_DIM;
+		} else if (s_cur_scene == CAMERA_SCENE_MODE_DARK) {
+			SENSOR_PRINT_HIGH("Dark mode activate");
+			s5k4ec_I2C_write(s5k4ec_capture_longer_FPS);
+			s_current_env = ENVIRONMENT_LONG_EXPOSURE;
 		} else if (s_cur_scene == CAMERA_SCENE_MODE_SPORTS) {
 			/*
 			 * The Sports scene mode cannot have low light capture tweaks with
@@ -1123,20 +1246,20 @@ LOCAL uint32_t _s5k4ec_BeforeSnapshot(uint32_t param)
 			SENSOR_PRINT_HIGH("But still not applying any low light tweaks.");
 		} else {
 			/*
-			 * We won't support flash like what  we did with the night mode
+			 * We won't support flash like what we did with the night mode
 			 * Use night mode if they want that.
 			 */
 			SENSOR_PRINT_HIGH("Low cap mode activate");
 			s5k4ec_I2C_write(s5k4ec_capture_med_FPS); // medium exposure (~325 msecs)
 			s5k4ec_I2C_write(s5k4ec_low_cap_On);
-			s_current_env = 1;
+			s_current_env = ENVIRONMENT_LOW_LIGHT;
 		}
 	} else { // normal capture
 		s5k4ec_I2C_write(s5k4ec_capture_short_FPS); // normal exposure (~125 msecs)
 	}
 
 	Sensor_SetMode(capture_mode);
-	SENSOR_Sleep(10); // wait since Sensor_SetMode() is async
+	Sensor_SetMode_WaitDone();
 
 	SENSOR_PRINT_HIGH("s_current_shutter,s_current_gain = %x,%x", s_current_shutter,s_current_gain);
 	return SENSOR_SUCCESS;
@@ -1244,16 +1367,30 @@ LOCAL uint32_t _s5k4ec_after_snapshot(uint32_t param)
 	}
 
 	// Reset the low light capture settings as soon as possible.
-	if (2 == s_current_env)
+	switch (s_current_env) {
+	case ENVIRONMENT_DIM:
 		s5k4ec_I2C_write(s5k4ec_night_mode_Off);
-	else if (1 == s_current_env)
+		break;
+	case ENVIRONMENT_DIM_FLASH:
+		s5k4ec_I2C_write(s5k4ec_night_mode_apply_LEI);
+		if (s_cur_scene == CAMERA_SCENE_MODE_NIGHT)
+			s5k4ec_I2C_write(s5k4ec_capture_long_FPS);
+		break;
+	case ENVIRONMENT_LOW_LIGHT:
 		s5k4ec_I2C_write(s5k4ec_low_cap_Off);
+		break;
+	case ENVIRONMENT_LONG_EXPOSURE:
+		s5k4ec_I2C_write(s5k4ec_scene_revert_exp);
+		break;
+	default:
+	case ENVIRONMENT_NORMAL:
+		break;
+	}
 	s_current_env = 0;
 
 	// Restore previous sensor mode (which is the preview mode)
 	Sensor_SetMode((uint32_t)param);
-	SENSOR_Sleep(10); // NOTE: Sensor_SetMode() is async, wait for it.
-	s5k4ec_I2C_write(s5k4ec_preview_return);
+	Sensor_SetMode_WaitDone();
 	is_cap = 0;
 
 	// Retrieve information about the size of the captured image
@@ -1639,89 +1776,23 @@ LOCAL uint32_t _s5k4ec_StartAutoFocus(uint32_t param)
 }
 
 /*
- * The function below sets the exposure and gain by using
- * the sensor's AE algorithm.
- * Works great most of the time unless if its in low light
- * environments.
- */
-#if 0
-LOCAL uint32_t _s5k4ec_SetEV(uint32_t param)
-{
-	uint32_t rtn = SENSOR_SUCCESS;
-	SENSOR_EXT_FUN_PARAM_T_PTR ext_ptr = (SENSOR_EXT_FUN_PARAM_T_PTR) param;
-	uint32_t ev = ext_ptr->param;
-	int16_t level = 3;
-
-	static int16_t save_level;
-	static int8_t restore_needed = 0;
-
-	SENSOR_PRINT_HIGH("param: 0x%x", ext_ptr->param);
-
-	switch(ev) {
-	case SENSOR_HDR_EV_LEVE_0:
-		save_level = s_ev_comp_lvl;
-		level = 4;
-		break;
-	case SENSOR_HDR_EV_LEVE_1:
-		/*
-		 * Sprd's libcamera calls this function with param
-		 * SENSOR_HDR_EV_LEVE_1 twice: first as a HDR step
-		 * and second to restore the EV Comp setting.
-		 */
-		if (!restore_needed) { // as an HDR step
-			level = 5;
-		} else { // restore the EV Compensation setting
-			level = save_level;
-		}
-		restore_needed = !restore_needed;
-		break;
-	case SENSOR_HDR_EV_LEVE_2:
-		level = 6;
-		break;
-	default:
-		SENSOR_PRINT_ERR("Undefined parameter level");
-		return 0;
-	}
-
-	s5k4ec_I2C_write(s5k4ec_preview_return);
-
-	s5k4ec_set_ae_enable(1);
-	s5k4ecgx_fast_ae(1);
-
-	if (level < 0) {
-		Sensor_WriteReg(0x0028, 0x7000);
-		Sensor_WriteReg(0x002A, 0x023A); // REG_TC_UserExposureVal88
-		Sensor_WriteReg(0x0F12, 0x0056); // 0x100 -- default
-	} else if (level > 6) {
-		Sensor_WriteReg(0x0028, 0x7000);
-		Sensor_WriteReg(0x002A, 0x023A); // REG_TC_UserExposureVal88
-		Sensor_WriteReg(0x0F12, 0x0300);
-	} else {
-		_s5k4ec_set_ev(level);
-	}
-
-	s5k4ec_wait_until_ae_stable();
-	s5k4ecgx_fast_ae(0);
-	s5k4ec_set_ae_enable(0);
-	return rtn;
-}
-#endif
-/*
- * The function below disables the AE algorithm and manually
- * computes the exposure and gain.
- * The computation is based on the last EV and ISO values
- * the AE algorithm has set.
- * Works OK all of the time, even in low light environments.
+ * Calculates the exposure and gain for an HDR step using
+ * the previous AE and ISO settings. This doesn't do anything
+ * in the first steps and lets the camera sensor auto adjust its
+ * Exposure and ISO settings.
+ *
+ * Second step doubles both values. In the Third step,
+ * the values are the 2.5x of the original values.
  */
 LOCAL uint32_t _s5k4ec_SetEV(uint32_t param)
 {
-#define MAX_A_D_GAIN (16 << 8) //max combined analog+digital gain, 16x (~800ISO)
-#define MAX_EV_TIME ( 650 * 100) // max exposure time, 650ms
+#define MAX_A_D_GAIN (8 << 8) //max combined analog*digital gain, 8x (~400ISO)
+#define MAX_EV_TIME (2000 * 100) // max exposure time, 2000ms (2 seconds)
 
 	uint32_t rtn = SENSOR_SUCCESS;
 	SENSOR_EXT_FUN_PARAM_T_PTR ext_ptr = (SENSOR_EXT_FUN_PARAM_T_PTR) param;
 	uint16_t f_gain = 0;
-	uint16_t f_ev = 0;
+	uint32_t f_ev = 0;
 
 	static int8_t restore_needed = 0;
 	static int32_t ev;
@@ -1734,91 +1805,110 @@ LOCAL uint32_t _s5k4ec_SetEV(uint32_t param)
 
 	switch(ext_ptr->param) {
 	case SENSOR_HDR_EV_LEVE_0:
-		SENSOR_PRINT_HIGH("Backup AE, EV and Gain settings");
-		// Calculate Exposure time
-		Sensor_WriteReg(0xFCFC, 0xD000);
-		Sensor_WriteReg(0x002C, 0x7000);
-		Sensor_WriteReg(0x002E, 0x2C28);
-		ev = Sensor_ReadReg(0x0F12);
-		ev += Sensor_ReadReg(0x0F12) << 16;
-		ev = ev >> 2;
-		SENSOR_PRINT_HIGH("ev=0x%X(%f)\n", ev, (float)ev / 100);
+		SENSOR_PRINT_HIGH("Capture normal image first...");
+		// We do nothing at this state, just return
 
-		// Calculate sensor Gains
-		// NOTE: Analog and Digital gains are in 8.8 fixed point numbers
-		Sensor_WriteReg(0x002C, 0x7000);
-		Sensor_WriteReg(0x002E, 0x2BC4);
-		gain = Sensor_ReadReg(0x0F12); //A gain
-		gain = gain * Sensor_ReadReg(0x0F12); //D gain
-		// NOTE: By this line, gain is a 16.16 fixed-point number
-		// But the sensor only reads 8.8 values
-		// We need to reduce its precision.
-		// formula: let x=>16.16 number, y=>temp variable, z=>result
-		//          y = x / (2 ^ 16) // convert to real number
-		//          z = y * (2 ^ 8)  // convert back to 8.8 fp number
-		//          z = x / (2 ^ 8)  // Simplified form
-		gain =  gain >> 8;
-		// CAUTION: If this gain value goes under 1, you may want
-		//          to check why that happens.
-		SENSOR_PRINT_HIGH("gain=0x%X(%f)\n", gain, (float)gain / 256);
+		// Increase possible framerate for the capture mode
+		s5k4ec_I2C_write(s5k4ec_capture_hdr_FPS);
 
-		// Backup auto algorithm switches
-		Sensor_WriteReg(0x002C, 0x7000);
-		Sensor_WriteReg(0x002E, 0x04E6);
-		auto_algorithm_en = Sensor_ReadReg(0x0F12);
-		SENSOR_PRINT_HIGH("AutoAlgEn=0x%X\n", auto_algorithm_en);
+		if ( restore_needed != 0)
+			SENSOR_PRINT_HIGH("Backed up register values may have not been restored");
+		restore_needed = 0;
 
-		// Backup manual EV and Gain
-		Sensor_WriteReg(0x002C, 0x7000);
-		Sensor_WriteReg(0x002E, 0x04AC);
-		manual_ev = Sensor_ReadReg(0x0F12);
-		manual_ev |= Sensor_ReadReg(0x0F12) << 16;
-		Sensor_WriteReg(0x002E, 0x04B2);
-		manual_gain = Sensor_ReadReg(0x0F12);
-		SENSOR_PRINT_HIGH("m_gain=0x%X m_ev=ox%X\n", manual_gain, manual_ev);
-
-		SENSOR_PRINT_HIGH("Backup Done, this will be restored later.");
-
-		// Disable LEI adjustments and AE algorithms
-		Sensor_WriteReg(0x0028, 0x7000);
-		Sensor_WriteReg(0x002A, 0x04E6);
-		Sensor_WriteReg(0x0F12, auto_algorithm_en & 0xFFF9);
-
-		f_gain = gain / 2;
-		f_ev = ev / 2;
-		break;
+		return SENSOR_SUCCESS;
 	case SENSOR_HDR_EV_LEVE_1:
 		if (!restore_needed) { // as an HDR step
-			f_gain = gain;
-			f_ev = ev;
+			SENSOR_PRINT_HIGH("Backup AE, EV and Gain settings");
+			// Calculate Exposure time
+			Sensor_WriteReg(0xFCFC, 0xD000);
+			Sensor_WriteReg(0x002C, 0x7000);
+			Sensor_WriteReg(0x002E, 0x2C28);
+			ev = Sensor_ReadReg(0x0F12);
+			ev += Sensor_ReadReg(0x0F12) << 16;
+			ev = ev >> 2;
+			SENSOR_PRINT_HIGH("ev=0x%X(%f)\n", ev, (float)ev / 100);
+
+			// Calculate sensor Gains
+			// NOTE: Analog and Digital gains are in 8.8 fixed point numbers
+			Sensor_WriteReg(0x002C, 0x7000);
+			Sensor_WriteReg(0x002E, 0x2BC4);
+			gain = Sensor_ReadReg(0x0F12); //A gain
+			gain = gain * Sensor_ReadReg(0x0F12); //D gain
+			// NOTE: By this line, gain is a 16.16 fixed-point number
+			// But the sensor only reads 8.8 values
+			// We need to reduce its precision.
+			// formula: let x=>16.16 number, y=>temp variable, z=>result
+			//          y = x / (2 ^ 16) // convert to real number
+			//          z = y * (2 ^ 8)  // convert back to 8.8 fp number
+			//          z = x / (2 ^ 8)  // Simplified form
+			gain =  gain >> 8;
+			// CAUTION: If this gain value goes under 1, you may want
+			//          to check why that happens.
+			SENSOR_PRINT_HIGH("gain=0x%X(%f)\n", gain, (float)gain / 256);
+
+			// Backup auto algorithm switches
+			Sensor_WriteReg(0x002C, 0x7000);
+			Sensor_WriteReg(0x002E, 0x04E6);
+			auto_algorithm_en = Sensor_ReadReg(0x0F12);
+			SENSOR_PRINT_HIGH("AutoAlgEn=0x%X\n", auto_algorithm_en);
+
+			// Backup manual EV and Gain
+			Sensor_WriteReg(0x002C, 0x7000);
+			Sensor_WriteReg(0x002E, 0x04AC);
+			manual_ev = Sensor_ReadReg(0x0F12);
+			manual_ev |= Sensor_ReadReg(0x0F12) << 16;
+			Sensor_WriteReg(0x002E, 0x04B2);
+			manual_gain = Sensor_ReadReg(0x0F12);
+			SENSOR_PRINT_HIGH("m_gain=0x%X m_ev=0x%X\n", manual_gain, manual_ev);
+
+			SENSOR_PRINT_HIGH("Backup Done, this will be restored later.");
+
+			// Disable LEI adjustments and AE algorithms
+			Sensor_WriteReg(0x0028, 0x7000);
+			Sensor_WriteReg(0x002A, 0x04E6);
+			Sensor_WriteReg(0x0F12, auto_algorithm_en & 0xFFF9);
+
+			f_gain = gain * 2.0;
+			f_ev = ev * 2.0;
 		} else {
 			SENSOR_PRINT_HIGH("HDR has finished, will restore values now.");
-			// Restore defaults
-			f_gain = manual_gain;
-			f_ev = manual_ev;
-
 			// Restore auto algorithm switches
 			Sensor_WriteReg(0x0028, 0x7000);
 			Sensor_WriteReg(0x002A, 0x04E6);
 			Sensor_WriteReg(0x0F12, auto_algorithm_en);
+
+			// Restore defaults
+			f_gain = manual_gain;
+			f_ev = manual_ev;
+			// Skip sanity checks and go directly set the backed up values
+			goto _do_set;
 		}
+
 		restore_needed = !restore_needed;
 		break;
 	case SENSOR_HDR_EV_LEVE_2:
-		f_gain = gain * 2;
-		f_ev = ev * 2;
+		f_gain = gain * 2.5;
+		f_ev = ev * 2.5;
+
 		break;
 	default:
 		SENSOR_PRINT_ERR("Undefined parameter level");
 		return 0;
 	}
 
-	f_gain = (f_gain > MAX_A_D_GAIN) ? MAX_A_D_GAIN : f_gain;
-	f_ev = (f_ev > MAX_EV_TIME) ? MAX_EV_TIME : f_ev;
+	if (f_gain > MAX_A_D_GAIN) {
+		SENSOR_PRINT_ERR("Maximum ISO level reached, extending exposure time");
+		f_ev = (uint32_t)((float)(f_gain / MAX_A_D_GAIN) * f_ev);
+		f_gain = MAX_A_D_GAIN;
+	}
+
+	f_gain = (f_gain > MAX_A_D_GAIN) ? MAX_A_D_GAIN : (!f_gain ? 1 : f_gain);
+	f_ev = (f_ev > MAX_EV_TIME) ? MAX_EV_TIME : (!f_ev ? 1 : f_ev);
 
 	SENSOR_PRINT_HIGH("f_gain=0x%X(%f)\n", f_gain, (float)f_gain / 256);
 	SENSOR_PRINT_HIGH("f_ev=0x%X(%f msec) \n", f_ev, (float)f_ev / 100);
 
+_do_set:
 	Sensor_WriteReg(0x002A, 0x04AC);
 	Sensor_WriteReg(0x0F12, (int16_t) (f_ev & 0xFFFF));   // REG_SF_USER_Exposure
 	Sensor_WriteReg(0x0F12, (int16_t) (f_ev >> 16));      // REG_SF_USER_ExposureHigh
@@ -1858,10 +1948,26 @@ LOCAL uint32_t _s5k4ec_ExtFunc(uint32_t ctl_param)
 LOCAL uint32_t _s5k4ec_StreamOn(__attribute__((unused)) uint32_t param)
 {
 	SENSOR_PRINT_HIGH("SENSOR:Start s5k4ec_steamon 1613");
+	int16_t error;
 
 	if (1 != is_cap) {
 		SENSOR_PRINT_HIGH("zxdbg preview stream on");
+		Sensor_WriteReg(0x002C, 0x7000);
+		Sensor_WriteReg(0x002E, 0x026C); // REG_TC_GP_ErrorPrevConfig
+		error = Sensor_ReadReg(0x0F12);
 
+		if (error) {
+			SENSOR_PRINT_HIGH("Preview Stream error 0x%04X: %s", error, s5k4ec_StreamStrerror(error));
+
+			// Attempt to recover some errors
+			if (error ==  0x06) {
+				SENSOR_PRINT_HIGH("Attempting to set Framerate to auto.");
+				s_target_max_fps = 0;
+#ifdef WA_LIMIT_HD_CAM_FPS
+				s5k4ec_set_FPS(s_target_max_fps);
+#endif
+			}
+		}
 		/*
 		 * NOTE: There is no reason to manually activate the
 		 * preview stream, even when changing resolutions
@@ -1880,39 +1986,37 @@ LOCAL uint32_t _s5k4ec_StreamOn(__attribute__((unused)) uint32_t param)
 			_s5k4ec_set_iso(s_ISO_mode);
 		}
 
-#if defined(WA_BOOST_DDR_FREQ_720P) || defined(WA_LIMIT_HD_CAM_24FPS)
+#if defined(WA_BOOST_DDR_FREQ_720P) || defined(WA_LIMIT_HD_CAM_FPS)
 		s_fps_cur_mode = FPS_MODE_INVALID;
 
-		if (s_hd_applied) {
 #ifdef WA_BOOST_DDR_FREQ_720P
+		if (s_hd_applied) {
 			if (s_ddr_boosted == 0) {
-				if (s5k4ec_ddr_is_slow(1) == 0) {
-					SENSOR_PRINT_HIGH("workaround: Increasing DDR freq for 720p recording");
-				} else {
-					SENSOR_PRINT_HIGH("Failed to apply workaround, video may be more choppy");
-				}
+				SENSOR_PRINT_HIGH("workaround: Increasing DDR freq for 720p recording");
+				if (s5k4ec_ddr_is_slow(1))
+					SENSOR_PRINT_HIGH("Failed to apply workaround: %d");
 			}
-#endif
-#ifdef WA_LIMIT_HD_CAM_24FPS
-			SENSOR_PRINT_HIGH("workaround: s_target_max_fps %u", s_target_max_fps);
-			if ((s_target_max_fps > 24) || (s_target_max_fps == 0)) {
-				if (!s_target_max_fps) // Auto FPS is requested
-					s5k4ec_set_manual_FPS(0, 24);
-				else
-					s5k4ec_set_FPS(24);
-
-				SENSOR_PRINT_HIGH("workaround: limiting maximum FPS to 24");
-				s_fps_cur_mode = FPS_MODE_OVERRIDE;
-			}
-#endif
 		}
+#endif
+
+#ifdef WA_LIMIT_HD_CAM_FPS
+		if (s_fps_limit &&
+		    (!s_target_max_fps || (s_target_max_fps > s_fps_limit))) {
+			SENSOR_PRINT_HIGH("workaround: limiting maximum FPS to %d", s_fps_limit);
+			if (!s_target_max_fps) // Auto FPS is requested
+				s5k4ec_set_manual_FPS(0, s_fps_limit);
+			else
+				s5k4ec_set_manual_FPS(s_fps_limit, s_fps_limit);
+		}
+#endif
 #endif
 
 		// Apply the settings that tweaks the maximum Exposure time
 		// only for the scenes that don't change it.
-		if ((s_cur_scene != CAMERA_SCENE_MODE_NIGHT &&
-		     s_cur_scene != CAMERA_SCENE_MODE_FIREWORK) &&
-		     s_fps_cur_mode != FPS_MODE_OVERRIDE) {
+		if (s_cur_scene != CAMERA_SCENE_MODE_NIGHT &&
+		    s_cur_scene != CAMERA_SCENE_MODE_DARK &&
+		    s_cur_scene != CAMERA_SCENE_MODE_FIREWORK &&
+		    s_fps_cur_mode == FPS_MODE_INVALID) {
 			s5k4ec_set_FPS(s_target_max_fps);
 		}
 
@@ -1926,6 +2030,15 @@ LOCAL uint32_t _s5k4ec_StreamOn(__attribute__((unused)) uint32_t param)
 		SENSOR_PRINT_HIGH("zxdbg capture stream on");
 
 		s5k4ec_I2C_write(s5k4ec_capture_start);
+
+		Sensor_WriteReg(0x002C, 0x7000);
+		Sensor_WriteReg(0x002E, 0x0272);
+		error = Sensor_ReadReg(0x0F12);
+
+		// Ignore PrevConfigIdxTooHigh since that doesn't make sense in capture mode
+		if (error && error != 1)
+			SENSOR_PRINT_HIGH("Capture Stream error 0x%04X: %s", error, s5k4ec_StreamStrerror(error));
+
 	}
 
 	s_stream_is_on = 1;
@@ -1944,12 +2057,13 @@ LOCAL uint32_t _s5k4ec_StreamOff(__attribute__((unused)) uint32_t param)
 #endif
 
 	s_flash_state = cxt->cmr_set.flash;
-	if ((s_cur_scene == CAMERA_SCENE_MODE_NIGHT ||
-	     s_cur_scene == CAMERA_SCENE_MODE_FIREWORK ||
-	     s_cur_scene == CAMERA_SCENE_MODE_HDR)) {
+	if (s_cur_scene == CAMERA_SCENE_MODE_NIGHT ||
+	    s_cur_scene == CAMERA_SCENE_MODE_DARK ||
+	    s_cur_scene == CAMERA_SCENE_MODE_FIREWORK ||
+	    s_cur_scene == CAMERA_SCENE_MODE_HDR) {
 
-		if (cxt->cmr_set.flash) {
-			cxt->cmr_set.flash = 0;
+		if (cxt->cmr_set.flash != FLASH_CLOSE) {
+			cxt->cmr_set.flash = FLASH_CLOSE;
 			SENSOR_PRINT_HIGH("Flash is forced-disabled on the current scene mode.");
 		}
 	} else if ((FLASH_CLOSE != s_flash_state) && s_stream_is_on) {
@@ -1957,12 +2071,19 @@ LOCAL uint32_t _s5k4ec_StreamOff(__attribute__((unused)) uint32_t param)
 	}
 
 	/*
-	 * Work around: Allow setting the scene mode again by invalidating the state
-	 * Some camera apps apply user settings (even the default)
-	 * after applying the scene modes that was meant to override
-	 * those user knobs once.
+	 * Work around: Disable Capture mode as Soon As Possible
+	 * With long exposures, this becomes more apparent that
+	 * the camera wastes a frame of capture after the initial one.
 	 */
-	s_cur_scene = (uint16_t) -1;
+	if (is_cap && s_stream_is_on)
+		s5k4ec_I2C_write(s5k4ec_preview_return);
+
+	/*
+	 * Work around: Allow setting the scene mode again
+	 * Some camera apps apply the scene mode twice (!?)
+	 * Before and After applying user settings.
+	 */
+	s_force_set_scene = 1;
 
 	s_stream_is_on = 0;
 	return SENSOR_SUCCESS;
@@ -2216,7 +2337,8 @@ LOCAL uint32_t __s5k4ecgx_set_focus_mode(uint32_t mode)
 		s5k4ec_I2C_write(s5k4ec_AF_macro_mode_2);
 		SENSOR_Sleep(delay);
 
-		if (s_cur_scene != CAMERA_SCENE_MODE_NIGHT)
+		if ((s_cur_scene != CAMERA_SCENE_MODE_NIGHT) &&
+		    (s_cur_scene != CAMERA_SCENE_MODE_DARK))
 			s5k4ec_I2C_write(s5k4ec_AF_macro_mode_3);
 		break;
 	case 3: // Infinity
@@ -2230,7 +2352,8 @@ LOCAL uint32_t __s5k4ecgx_set_focus_mode(uint32_t mode)
 		s5k4ec_I2C_write(s5k4ec_AF_continuous_mode_1);
 		SENSOR_Sleep(delay);
 
-		if (s_cur_scene != CAMERA_SCENE_MODE_NIGHT)
+		if ((s_cur_scene != CAMERA_SCENE_MODE_NIGHT) &&
+		    (s_cur_scene != CAMERA_SCENE_MODE_DARK))
 			s5k4ec_I2C_write(s5k4ec_AF_continuous_mode_2);
 
 		s5k4ec_I2C_write(s5k4ec_continuous_AF_start);
@@ -2245,7 +2368,8 @@ LOCAL uint32_t __s5k4ecgx_set_focus_mode(uint32_t mode)
 		s5k4ec_I2C_write(s5k4ec_AF_normal_mode_2);
 		SENSOR_Sleep(delay);
 
-		if (s_cur_scene != CAMERA_SCENE_MODE_NIGHT)
+		if ((s_cur_scene != CAMERA_SCENE_MODE_NIGHT) &&
+		    (s_cur_scene != CAMERA_SCENE_MODE_DARK))
 			s5k4ec_I2C_write(s5k4ec_AF_normal_mode_3);
 		break;
 	}
@@ -2276,7 +2400,6 @@ LOCAL uint32_t s5k4ecgx_set_focus_mode(uint32_t mode)
 LOCAL uint32_t s5k4ec_wait_until_ae_stable()
 {
 	uint16_t reg_value;
-
 	Sensor_WriteReg(0xFCFC, 0xD000);
 
 	SENSOR_PRINT_HIGH("Waiting for AE to become stable");
@@ -2357,7 +2480,8 @@ LOCAL uint32_t s5k4ec_low_light_AF_check(void)
 
 	SENSOR_PRINT_HIGH("Decide whether to use low light AF or not");
 
-	if (s_cur_scene == CAMERA_SCENE_MODE_NIGHT) {
+	if ((s_cur_scene == CAMERA_SCENE_MODE_NIGHT) ||
+	    (s_cur_scene == CAMERA_SCENE_MODE_DARK) ){
 		SENSOR_PRINT_HIGH("Night Scene mode only uses low light AF.");
 		return SENSOR_SUCCESS;
 	}
@@ -2461,14 +2585,15 @@ LOCAL uint32_t s5k4ec_set_FPS(uint32_t fps)
 LOCAL uint32_t s5k4ec_set_manual_FPS(uint32_t min, uint32_t max)
 {
 	uint16_t FrRateQualityType;
+	uint16_t FrRateType;
 	static SENSOR_REG_T manual_setting[] = {
 		{0x0028, 0x7000},
 
 		{0x002A, 0x02BE},
-		{0x0F12, 0x0000},
-		{0x0F12, 0x0000}, //3
-		{0x0F12, 0x0000}, //4
-		{0x0F12, 0x0000}, //5
+		{0x0F12, 0x0000}, //REG_0TC_PCFG_usFrTimeType//2
+		{0x0F12, 0x0000}, //REG_0TC_PCFG_FrRateQualityType//3
+		{0x0F12, 0x0000}, //REG_0TC_PCFG_usMaxFrTimeMsecMult10//4
+		{0x0F12, 0x0000}, //REG_0TC_PCFG_usMinFrTimeMsecMult10//5
 
 		{0x002A, 0x0266},
 		{0x0F12, 0x0000},
@@ -2483,19 +2608,23 @@ LOCAL uint32_t s5k4ec_set_manual_FPS(uint32_t min, uint32_t max)
 
 	SENSOR_PRINT_ERR("Max:%u Min:%u", max, min);
 
-	if ((30 < max) || (30 > min) || (min > max)) {
+	if ((30 < max) || (30 < min) || (min > max)) {
 		SENSOR_PRINT_ERR("Invalid options passed.");
 		return -1;
 	}
 
-	if (min == max)
-		FrRateQualityType = 1;
-	else
+	if ((min == max) && (min == 0)) { // auto
 		FrRateQualityType = 0;
+		FrRateType = 0;
+	} else {
+		FrRateQualityType = 1;
+		FrRateType = 2;
+	}
 
+	manual_setting[2].reg_value = FrRateType;
 	manual_setting[3].reg_value = FrRateQualityType;
-	manual_setting[4].reg_value = max;
-	manual_setting[5].reg_value = min;
+	manual_setting[4].reg_value = max ? 10000/max : 0;
+	manual_setting[5].reg_value = min ? 10000/min : 0;
 
 	s5k4ec_I2C_write(manual_setting);
 
@@ -2542,6 +2671,25 @@ LOCAL void s5k4ec_set_REG_TC_DBG_AutoAlgEnBits(int bit, int set)
 	return;
 }
 
+/*
+ * Decodes error codes when setting preview/capture settings.
+ * Values from the s5k4ec datasheet.
+ */
+LOCAL const char *s5k4ec_StreamStrerror(int error) {
+	switch (error) {
+		case 0: return "No Error";
+		case 1: return "PrevConfigIdxTooHigh";
+		case 2: return "CapConfigIdxTooHigh";
+		case 4: return "ClockIdxTooHigh";
+		case 5: return "BadDsFixedHsync";
+		case 6: return "BEST_FRRATE_NOT_ALLOWED";
+		case 7: return "BAD_DS_RATIO";
+		case 8: return "BAD_INPUT_WIDTH";
+		case 9: return "Pvi Div";
+		default: return "Unknown";
+	}
+}
+
 #ifdef WA_BOOST_DDR_FREQ_720P
 LOCAL int8_t s5k4ec_ddr_is_slow(int8_t boost) {
 	/*
@@ -2555,14 +2703,20 @@ LOCAL int8_t s5k4ec_ddr_is_slow(int8_t boost) {
 	 * #2 on errors, will still have the DFS on and may
 	 * still scale down. It's just more likely to scale up.
 	 *
-	 * I'll use the #2.
+	 * I'll go with #2.
 	 */
-	// const char* const set_freq = "/sys/devices/platform/scxx30-dmcfreq.0/devfreq/scxx30-dmcfreq.0/ondemand/set_freq";
+#define METHOD 2
+	const char* const set_freq = "/sys/devices/platform/scxx30-dmcfreq.0/devfreq/scxx30-dmcfreq.0/ondemand/set_freq";
 	const char* const set_upthreshold = "/sys/class/devfreq/scxx30-dmcfreq.0/ondemand/set_upthreshold";
 	const char* const threshold = "50";
+#if METHOD == 2
+#define METHOD_FILE set_upthreshold
+#else
+#define METHOD_FILE set_freq
+#endif
 
 	static char prev_thresh[5] = {0};
-	int ret;
+	int ret = 0;
 	FILE* fp;
 
 	SENSOR_PRINT_HIGH("boost=%d", boost);
@@ -2570,20 +2724,19 @@ LOCAL int8_t s5k4ec_ddr_is_slow(int8_t boost) {
 	if (s_ddr_boosted == boost)
 		return 0;
 
-	SENSOR_PRINT_HIGH("Open file %s", set_upthreshold);
-	if (!(fp = fopen(set_upthreshold, "r+"))) {
-		SENSOR_PRINT_ERR("Failed to open %s", set_upthreshold);
+	SENSOR_PRINT_HIGH("Open file %s", METHOD_FILE);
+	if (!(fp = fopen(METHOD_FILE, "r+"))) {
+		SENSOR_PRINT_ERR("Failed to open %s: %s", METHOD_FILE, strerror(errno));
 		return -1;
 	}
 
-	// method #1
-	// fprintf(fp, "%d", boost ? 500000: 0); //one-liner
-
+#if METHOD == 2
 	//method #2
 	if (boost) {
 		prev_thresh[0] = 0;
 		if (fgets(prev_thresh, 5 /*sizeof(prev_thresh)*/, fp)) {
 			ret = fprintf(fp, "%s", threshold);
+			ret = ret > 0 ? 0 : errno;
 		} else {
 			SENSOR_PRINT_ERR("Error reading file: %s", strerror(errno));
 			ret = -1;
@@ -2591,7 +2744,13 @@ LOCAL int8_t s5k4ec_ddr_is_slow(int8_t boost) {
 		}
 	} else {
 		ret = fprintf(fp, "%s", prev_thresh);
+		ret = ret > 0 ? 0 : errno;
 	}
+#else
+	// method #1
+	ret = fprintf(fp, "%d", boost ? 500000: 0);
+	ret = ret > 0 ? 0 : errno;
+#endif
 
 	if (ret < 0) {
 		SENSOR_PRINT_HIGH("Error writing to file: %s", strerror(errno));

@@ -256,27 +256,44 @@ static int gralloc_alloc_buffer(alloc_device_t* dev, size_t size, int usage, buf
         private_handle_t *hnd = NULL;
 
         if (usage & (GRALLOC_USAGE_VIDEO_BUFFER|GRALLOC_USAGE_CAMERA_BUFFER))
-        { 
+        {
             ion_heap_mask = ION_HEAP_ID_MASK_MM;
         }
+#ifdef ION_OVERLAY_IS_CARVEOUT
+        /*
+         * Addendum 5: Move GRALLOC_USAGE_OVERLAY_BUFFER to MM
+         * Since ION_OVERLAY_IS_CARVEOUT is only active with FORCE_HWC_CONTIG,
+         * Expect SF to overwhelm ION_HEAP_ID_MASK_OVERLAY with layer buffers.
+         *
+         * Besides GRALLOC_USAGE_OVERLAY_BUFFER are usually the plane buffers
+         * used in SPRDHWC that are allocated once.
+         */
+        else if(usage & GRALLOC_USAGE_OVERLAY_BUFFER)
+        {
+            ion_heap_mask = ION_HEAP_ID_MASK_MM;
+        }
+#else
         else if(usage & GRALLOC_USAGE_OVERLAY_BUFFER)
         {
             ion_heap_mask = ION_HEAP_ID_MASK_OVERLAY;
         }
+#endif
 #ifdef FORCE_HWC_CONTIG
         /*
-         * Addendum 1: When having a buffer for use with the HWComposer
-         * make sure it's always contiguous so that GSP can work its
-         * wonders.
+         * Addendum 1: When allocating for use with the HWComposer
+         * try to make it contiguous so that GSP can work its wonders.
          *
-         * Addendum 3: HWC buffers are different from the GRALLOC_USAGE_OVERLAY_BUFFER
-         * SPRDHWC uses. HWC buffers handle all the layers sent to HWC which takes
-         * a lot of memory (15 MB overall average on 480x800).
-         * Thus, use the MM area which should be large enough.
+         * Addendum 3: HWC buffers are different from GRALLOC_USAGE_OVERLAY_BUFFER.
+         * Each HWC buffer corresponds to a layer which may take a bit of memory
+         * (about 15 MB on 480x800). Hence, use the MM area.
+         *
+         * Addendum 4: In CMA, the MM and OVERLAY are pooled together meaning
+         * all allocations from MM and OVERLAY goes to a single part of memory.
+         * So, setting ION_HEAP_ID_MASK_OVERLAY should be no problem.
          */
         else if (usage & GRALLOC_USAGE_HW_COMPOSER)
         {
-            ion_heap_mask = ION_HEAP_ID_MASK_MM;
+            ion_heap_mask = ION_HEAP_ID_MASK_OVERLAY;
         }
 #endif
         else
@@ -290,6 +307,19 @@ static int gralloc_alloc_buffer(alloc_device_t* dev, size_t size, int usage, buf
         }
 
         ret = ion_alloc(m->ion_client, size, 0, ion_heap_mask, ion_flag, &ion_hnd);
+
+#if defined(ALLOW_MM_FALLBACK)
+         /*
+          * Addendum 6: Retry failed allocations from MM in Overlay.
+          * Suppose OVERLAY and MM is separate, try to borrow memory in OVERLAY.
+          */
+        if (ret && (usage & (GRALLOC_USAGE_VIDEO_BUFFER|GRALLOC_USAGE_CAMERA_BUFFER))){
+            ALOGW("Cannot allocate in ION MM, falling back to OVERLAY");
+            ion_heap_mask = ION_HEAP_ID_MASK_OVERLAY;
+            ret = ion_alloc(m->ion_client, size, 0, ion_heap_mask, ion_flag, &ion_hnd);
+        }
+#endif
+
 #ifdef FORCE_HWC_CONTIG
         /*
          * Addendum 2: If the assumption on Addendum 1 fails, revert back to
@@ -300,8 +330,36 @@ static int gralloc_alloc_buffer(alloc_device_t* dev, size_t size, int usage, buf
         if (ret && (usage & GRALLOC_USAGE_HW_COMPOSER) &&
             !(usage & (GRALLOC_USAGE_VIDEO_BUFFER|GRALLOC_USAGE_CAMERA_BUFFER|GRALLOC_USAGE_OVERLAY_BUFFER))
         ){
-            ALOGW("CMA allocation failed, using virtual memory allocation instead.");
-            ion_heap_mask = ION_HEAP_ID_MASK_SYSTEM;
+
+#if defined(ALLOW_MM_FALLBACK)
+            ALOGW("HWC buffer allocation failed, falling back to MM");
+            ion_heap_mask = ION_HEAP_ID_MASK_MM;
+            ret = ion_alloc(m->ion_client, size, 0, ion_heap_mask, ion_flag, &ion_hnd);
+#endif
+
+            if (ret) {
+                ALOGW("HWC buffer allocation failed, falling back to vmalloc");
+                ion_heap_mask = ION_HEAP_ID_MASK_SYSTEM;
+                ret = ion_alloc(m->ion_client, size, 0, ion_heap_mask, ion_flag, &ion_hnd);
+            }
+        }
+#endif
+
+#ifdef KERNEL_HAS_RESERVED_CARVEOUT
+        /*
+         * Addendum 4: It's possible that even with the page migration powers of CMA
+         * or in low memory conditions, an allocation is not possible. This is
+         * often the case when allocating megabytes of physically contiguous
+         * memory like a 5MP camera buffer -- 1.5*5*10^6 (~7.15MB)
+         * or a video decoder buffer for 1080p videos. (~2.9MB).
+         *
+         * GRALLOC_USAGE_HW_COMPOSER should _NOT_ be given another chance nor
+         * GRALLOC_USAGE_OVERLAY_BUFFER.
+         */
+        if (ret && (usage & (GRALLOC_USAGE_VIDEO_BUFFER|GRALLOC_USAGE_CAMERA_BUFFER)))
+        {
+            ALOGW("Allocation failed, Trying to use the reserved carveout.");
+            ion_heap_mask = ION_HEAP_ID_MASK_RESERVED;
             ret = ion_alloc(m->ion_client, size, 0, ion_heap_mask, ion_flag, &ion_hnd);
         }
 #endif

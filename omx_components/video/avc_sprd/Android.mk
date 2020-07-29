@@ -22,12 +22,7 @@ ifneq (,$(filter scx15 sc8830,$(TARGET_BOARD_PLATFORM)))
 include_list := \
 	$(LOCAL_PATH)/thumbnail/Android.mk \
 
-ifeq ($(SOC_SCX35),true)
-include_list += $(call all-named-subdir-makefiles, scx15/enc sc8830/dec )
-else
 include_list += $(call all-named-subdir-makefiles,$(TARGET_BOARD_PLATFORM))
-endif
-
 include $(include_list)
 
 endif

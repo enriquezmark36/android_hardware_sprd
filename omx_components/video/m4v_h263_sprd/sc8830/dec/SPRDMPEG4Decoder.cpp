@@ -184,6 +184,10 @@ SPRDMPEG4Decoder::SPRDMPEG4Decoder(
         mInitCheck = OMX_ErrorInsufficientResources;
     }
 
+#ifdef SOC_SCX35
+    mIOMMUEnabled = MemoryHeapIon::Mm_iommu_is_enabled();
+    mIOMMUID = mIOMMUEnabled ? 1 /*ION_MM*/ : -1;
+#else
     if (MemoryHeapIon::IOMMU_is_enabled(ION_MM)) {
         mIOMMUEnabled = true;
         mIOMMUID = ION_MM;
@@ -191,6 +195,7 @@ SPRDMPEG4Decoder::SPRDMPEG4Decoder(
         mIOMMUEnabled = true;
         mIOMMUID = ION_VSP;
     }
+#endif
     ALOGI("%s, is IOMMU enabled: %d, ID: %d", __FUNCTION__, mIOMMUEnabled, mIOMMUID);
 
     if(mDecoderSwFlag) {
@@ -394,11 +399,18 @@ status_t SPRDMPEG4Decoder::initDecoder() {
             return OMX_ErrorInsufficientResources;
         } else {
             int ret;
+#ifdef SOC_SCX35
+            if (mIOMMUEnabled)
+                ret = mPmem_stream->get_mm_iova((int *) &phy_addr, (int *)&size);
+            else
+                ret = mPmem_stream->get_phy_addr_from_ion((int *)&phy_addr, (int *)&size);
+#else
             if (mIOMMUEnabled) {
                 ret = mPmem_stream->get_iova(mIOMMUID, &phy_addr, &size);
             } else {
                 ret = mPmem_stream->get_phy_addr_from_ion(&phy_addr, &size);
             }
+#endif
             if (ret < 0) {
                 ALOGE("Failed to alloc bitstream pmem buffer, get phy addr failed");
                 return OMX_ErrorInsufficientResources;
@@ -456,9 +468,14 @@ void SPRDMPEG4Decoder::releaseDecoder() {
             free(mPbuf_stream_v);
             mPbuf_stream_v = NULL;
         } else {
+#ifdef SOC_SCX35
+            if (mIOMMUEnabled)
+                mPmem_stream->free_mm_iova(mPbuf_stream_p, mPbuf_stream_size);
+#else
             if (mIOMMUEnabled) {
                 mPmem_stream->free_iova(mIOMMUID, mPbuf_stream_p, mPbuf_stream_size);
             }
+#endif
             mPmem_stream.clear();
             mPbuf_stream_v = NULL;
             mPbuf_stream_p = 0;
@@ -467,9 +484,14 @@ void SPRDMPEG4Decoder::releaseDecoder() {
     }
 
     if(mPbuf_extra_v != NULL) {
+#ifdef SOC_SCX35
+        if (mIOMMUEnabled)
+            mPmem_extra->free_mm_iova(mPbuf_extra_p, mPbuf_extra_size);
+#else
         if (mIOMMUEnabled) {
             mPmem_extra->free_iova(mIOMMUID, mPbuf_extra_p, mPbuf_extra_size);
         }
+#endif
         mPmem_extra.clear();
         mPbuf_extra_v = NULL;
         mPbuf_extra_p = 0;
@@ -733,7 +755,9 @@ OMX_ERRORTYPE SPRDMPEG4Decoder::internalUseBuffer(
         CHECK((*header)->pOutputPortPrivate != NULL);
         BufferCtrlStruct* pBufCtrl= (BufferCtrlStruct*)((*header)->pOutputPortPrivate);
         pBufCtrl->iRefCount = 1; //init by1
+#ifndef SOC_SCX35
         pBufCtrl->id = mIOMMUID;
+#endif
         if(mAllocateBuffers) {
             if(bufferPrivate != NULL) {
                 pBufCtrl->pMem = ((BufferPrivateStruct*)bufferPrivate)->pMem;
@@ -752,7 +776,11 @@ OMX_ERRORTYPE SPRDMPEG4Decoder::internalUseBuffer(
                 size_t bufferSize = 0;
                 native_handle_t *pNativeHandle = (native_handle_t *)((*header)->pBuffer);
                 struct private_handle_t *private_h = (struct private_handle_t *)pNativeHandle;
+#ifdef SOC_SCX35
+                MemoryHeapIon::Get_mm_iova(private_h->share_fd, (int *)&picPhyAddr, (int *)&bufferSize);
+#else
                 MemoryHeapIon::Get_iova(mIOMMUID, private_h->share_fd, &picPhyAddr, &bufferSize);
+#endif
 
                 pBufCtrl->pMem = NULL;
                 pBufCtrl->bufferFd = private_h->share_fd;
@@ -817,6 +845,19 @@ OMX_ERRORTYPE SPRDMPEG4Decoder::allocateBuffer(
                 return OMX_ErrorInsufficientResources;
             }
 
+#ifdef SOC_SCX35
+            if (mIOMMUEnabled) {
+                if(pMem->get_mm_iova((int *)&phyAddr, (int *)&bufferSize)) {
+                    ALOGE("get_mm_iova fail");
+                    return OMX_ErrorInsufficientResources;
+                }
+            } else {
+                if(pMem->get_phy_addr_from_ion((int *)&phyAddr, (int *)&bufferSize)) {
+                    ALOGE("get_phy_addr_from_ion fail");
+                    return OMX_ErrorInsufficientResources;
+                }
+            }
+#else
             if (mIOMMUEnabled) {
                 if(pMem->get_iova(mIOMMUID, &phyAddr, &bufferSize)) {
                     ALOGE("get_mm_iova fail");
@@ -828,6 +869,7 @@ OMX_ERRORTYPE SPRDMPEG4Decoder::allocateBuffer(
                     return OMX_ErrorInsufficientResources;
                 }
             }
+#endif
 
             pBuffer = (OMX_U8 *)(pMem->getBase());
             BufferPrivateStruct* bufferPrivate = new BufferPrivateStruct();
@@ -863,9 +905,14 @@ OMX_ERRORTYPE SPRDMPEG4Decoder::freeBuffer(
         if(pBufCtrl != NULL) {
             if(pBufCtrl->pMem != NULL) {
                 ALOGI("freeBuffer, phyAddr: 0x%lx", pBufCtrl->phyAddr);
+#ifdef SOC_SCX35
+                if (mIOMMUEnabled)
+                    pBufCtrl->pMem->free_mm_iova(pBufCtrl->phyAddr, pBufCtrl->bufferSize);
+#else
                 if (mIOMMUEnabled) {
                     pBufCtrl->pMem->free_iova(mIOMMUID, pBufCtrl->phyAddr, pBufCtrl->bufferSize);
                 }
+#endif
                 pBufCtrl->pMem.clear();
             }
             return SprdSimpleOMXComponent::freeBuffer(portIndex, header);
@@ -1143,7 +1190,11 @@ void SPRDMPEG4Decoder::onQueueFilled(OMX_U32 portIndex) {
                     native_handle_t *pNativeHandle = (native_handle_t *)outHeader->pBuffer;
                     struct private_handle_t *private_h = (struct private_handle_t *)pNativeHandle;
                     size_t bufferSize = 0;
+#ifdef SOC_SCX35
+                    MemoryHeapIon::Get_phy_addr_from_ion(private_h->share_fd, (int *)&picPhyAddr, (int *)&bufferSize);
+#else
                     MemoryHeapIon::Get_phy_addr_from_ion(private_h->share_fd, &picPhyAddr, &bufferSize);
+#endif
                     pBufCtrl->phyAddr = picPhyAddr;
                 }
             }
@@ -1516,11 +1567,19 @@ int SPRDMPEG4Decoder::extMemoryAlloc(unsigned int extra_mem_size) {
             unsigned long phy_addr;
             size_t buffer_size;
 
+#ifdef SOC_SCX35
+            if (mIOMMUEnabled) {
+                ret = mPmem_extra->get_mm_iova((int *)&phy_addr, (int *)&buffer_size);
+            } else {
+                ret = mPmem_extra->get_phy_addr_from_ion((int *)&phy_addr, (int *)&buffer_size);
+            }
+#else
             if (mIOMMUEnabled) {
                 ret = mPmem_extra->get_iova(mIOMMUID, &phy_addr, &buffer_size);
             } else {
                 ret = mPmem_extra->get_phy_addr_from_ion(&phy_addr, &buffer_size);
             }
+#endif
             if(ret < 0) {
                 ALOGE ("mPmem_extra: get phy addr fail %d",ret);
                 return -1;

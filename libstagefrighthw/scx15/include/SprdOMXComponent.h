@@ -44,7 +44,26 @@ typedef enum SPRD_OMX_INDEXTYPE {
     OMX_IndexParamStoreMetaDataBuffer,
     OMX_IndexParamPrependSPSPPSToIDR,
     OMX_IndexConfigThumbnailMode,
+    OMX_IndexConfigEncSceneMode,
+    OMX_IndexParamDescribeColorFormat,
 } SPRD_OMX_INDEXTYPE;
+
+/**
+ * Defines Encoder Scene Mode setting
+ *
+ * STRUCT MEMBERS:
+ *  nSize            : Size of the structure in bytes
+ *  nVersion         : OMX specification version information
+ *  nPortIndex       : Port that this structure applies to
+ *  nMode : Encoding scene mode(1:Volte, 2:Wfd, 0:Normal)
+ */
+
+typedef struct OMX_VIDEO_CONFIG_ENCODERSCENEMODE {
+    OMX_U32 nSize;
+    OMX_VERSIONTYPE nVersion;
+    OMX_U32 nPortIndex;
+    OMX_U32 nMode;
+} OMX_VIDEO_CONFIG_ENCODERSCENEMODE;
 
 typedef struct BufferCtrlStruct
 {

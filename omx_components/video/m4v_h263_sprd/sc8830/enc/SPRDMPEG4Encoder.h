@@ -55,6 +55,10 @@ protected:
 
 private:
     enum {
+#ifdef SOC_SCX35
+        kInputPortIndex   = 0,
+        kOutputPortIndex  = 1,
+#endif
         kNumBuffers = 2,
     };
 

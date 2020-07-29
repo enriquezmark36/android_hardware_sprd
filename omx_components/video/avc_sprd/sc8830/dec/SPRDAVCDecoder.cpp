@@ -256,6 +256,7 @@ SPRDAVCDecoder::SPRDAVCDecoder(
 
 #ifdef SOC_SCX35
     mIOMMUEnabled = MemoryHeapIon::Mm_iommu_is_enabled();
+    mIOMMUID = mIOMMUEnabled ? 1/*ION_MM*/ : -1;
 #else
     if (MemoryHeapIon::IOMMU_is_enabled(ION_MM)) {
         mIOMMUEnabled = true;

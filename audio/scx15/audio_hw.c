@@ -2222,12 +2222,15 @@ static ssize_t out_write(struct audio_stream_out *stream, const void* buffer,
         out_frames = RESAMPLER_BUFFER_SIZE / frame_size;
 
         if ((low_power != out->low_power) || (out->write_threshold == -1)) {
+#if 0
             if (low_power) {
                 out->config.avail_min = LONG_PERIOD_SIZE * PLAYBACK_LONG_PERIOD_COUNT - in_frames + VBC_BASE_FRAME_COUNT;
                 out->write_threshold = out->config.avail_min;
                 ALOGW("low_power out->write_threshold=%d, config.avail_min=%d, start_threshold=%d",
                         out->write_threshold,out->config.avail_min, out->config.start_threshold);
-            } else {
+            } else
+#endif
+            {
                 out->config.avail_min = SHORT_PERIOD_SIZE / 2;
                 out->write_threshold = SHORT_PERIOD_SIZE * (PLAYBACK_SHORT_PERIOD_COUNT);
                 ALOGW("out->write_threshold=%d, config.avail_min=%d, start_threshold=%d",

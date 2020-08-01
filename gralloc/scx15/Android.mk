@@ -82,10 +82,6 @@ LOCAL_CFLAGS += -DHIDL_INVALID_FD
 # Prevent HIDL from "freeing" FB memory at all.
 # Pun intended.
 LOCAL_CFLAGS += -DHIDL_NO_FREE_FB
-
-# Defers gralloc ion free until the buffer unregister
-# Patch still incomplete and incompatible with earlier Android versions
-LOCAL_CFLAGS += -DHIDL_DEFER_FREE
 endif
 
 ##

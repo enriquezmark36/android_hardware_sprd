@@ -81,9 +81,11 @@ static int gralloc_register_buffer(gralloc_module_t const *module, buffer_handle
 #if HIDL_INVALID_FD
 	if (hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER)
 	{
+#if HIDL_INVALID_FD
 		AINF("Working around the FD issue Prt2. Closing %d; setting to -1.\n", hnd->share_fd);
 		close(hnd->share_fd);
 		hnd->share_fd = -1;
+#endif
 		return 0;
 	}
 #endif
@@ -241,26 +243,11 @@ static int gralloc_unregister_buffer(gralloc_module_t const *module, buffer_hand
 
 	private_handle_t *hnd = (private_handle_t *)handle;
 
-#if defined(HIDL_INVALID_FD) || defined(HIDL_DEFER_FREE)
+#if HIDL_INVALID_FD
 	if (hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER)
 	{
-#ifdef HIDL_INVALID_FD
+#if HIDL_INVALID_FD
 		AINF("Working around the FD issue Prt3. Silently ignore calls to unregister the FB: %p\n", handle);
-#endif
-
-#ifdef HIDL_DEFER_FREE
-		/*
-		 * If we do unregister the FB memory, we'd close the file descriptor
-		 * Mali will segfault when it uses this handle afterwards.
-		 * As usual, check if it's the same client.
-		 */
-		private_module_t* m = (private_module_t*)(module);
-		if (m->ion_client == hnd->ion_client) {
-			const size_t bufferSize = m->finfo.line_length * m->info.yres;
-			int index = (hnd->base - m->framebuffer->base) / bufferSize;
-			m->bufferMask &= ~(1<<index);
-			close(hnd->fd);
-		}
 #endif
 		return 0;
 	}
@@ -298,20 +285,6 @@ static int gralloc_unregister_buffer(gralloc_module_t const *module, buffer_hand
 				AERR("Could not munmap base:0x%x size:%d '%s'", (unsigned int)base, size, strerror(errno));
 			}
 
-#ifdef HIDL_DEFER_FREE
-			/*
-			 * alloc_device_free() won't be called anymore after this
-			 * so call ion_free() now. Be warned though, this function
-			 * will be called multiple times on the different copies of
-			 * the same handle which is why we'd allowed multiple mmap
-			 * and munmap. We will ONLY call ion_free() when the
-			 * client is the creator of the allocation.
-			 */
-			if (((private_module_t*)(module))->ion_client == hnd->ion_client) {
-				if (ion_free(hnd->ion_client, hnd->ion_hnd) != 0)
-					AERR("Failed to ion_free(ion_client: %d ion_hnd: %p)", hnd->ion_client, hnd->ion_hnd);
-			}
-#endif
 #else
 			AERR("Can't unregister DMA_BUF buffer for hnd %p. Not supported", hnd);
 #endif

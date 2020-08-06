@@ -63,6 +63,10 @@ LOCAL_SRC_FILES += audio_mux_pcm.c
 LOCAL_CFLAGS += -DAUDIO_MUX_PCM
 endif
 
+ifeq ($(SOC_SCX35),true)
+LOCAL_CFLAGS += -DSOC_SCX35
+endif
+
 LOCAL_SHARED_LIBRARIES := \
 	liblog \
 	libcutils \

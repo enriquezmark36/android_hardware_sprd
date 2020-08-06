@@ -155,6 +155,11 @@
 #define CAPTURE_PERIOD_COUNT 2
 /* minimum sleep time in out_write() when write threshold is not reached */
 #define MIN_WRITE_SLEEP_US 5000
+/* This is for debug only; enables alternate period settings. */
+#define USE_ALTERNATE_PERIOD_PROPERTY "debug.audio.alternate_period"
+/* debug only: 0 - adds PCM_NOIRQ, 1 - no PCM_IRQ uses HW IRQs instead */
+#define USE_HW_IRQ_PROPERTY "debug.audio.with_irq"
+
 
 #define RESAMPLER_BUFFER_FRAMES (SHORT_PERIOD_SIZE * 2)
 #define RESAMPLER_BUFFER_SIZE (4 * RESAMPLER_BUFFER_FRAMES)
@@ -203,6 +208,27 @@ struct pcm_config pcm_config_mm_fast = {
     .format = PCM_FORMAT_S16_LE,
     .start_threshold = SHORT_PERIOD_SIZE/2,
     .avail_min = SHORT_PERIOD_SIZE/2,
+};
+
+/*
+ * This alternate configuration is based on the stock rom of SM-G355H:
+ * period_size = VBC_BASE_FRAME_COUNT * 8 * 3
+ * period_count = 2
+ * start_threshold = avail_min = 0
+ *
+ * NOTE:
+ * - One period by this config will be 87.07483 msecs.
+ * - More period_count would have less period_size and
+ *       generally would result to a higher cpu load.
+ */
+struct pcm_config pcm_config_alt = {
+    .channels = 2,
+    .rate = DEFAULT_OUT_SAMPLING_RATE,
+    .period_size = VBC_BASE_FRAME_COUNT * 27, // ~97.9592 msec
+    .period_count = 2,
+    .format = PCM_FORMAT_S16_LE,
+    .start_threshold = 0, // tinyalsa will set this
+    .avail_min = 0, // tinyalsa will set this
 };
 
 struct pcm_config pcm_config_mm_ul = {
@@ -1544,6 +1570,7 @@ static int start_output_stream(struct tiny_stream_out *out)
     struct tiny_audio_device *adev = out->dev;
     unsigned int card = 0;
     unsigned int port = PORT_MM;
+    unsigned int flags = PCM_OUT | PCM_MMAP | PCM_NOIRQ;
     struct pcm_config old_pcm_config={0};
     int ret=0;
 
@@ -1621,7 +1648,32 @@ static int start_output_stream(struct tiny_stream_out *out)
 	}
         out->low_power = 1;
 
-        out->pcm = pcm_open(card, port, PCM_OUT | PCM_MMAP | PCM_NOIRQ, &out->config);
+    /*
+     * Enclose this in a block to allow freeing the
+     * stack memory value as soon as possible
+     */
+    {
+        char value[PROPERTY_VALUE_MAX];
+
+#ifdef SOC_SCX35
+        property_get(USE_ALTERNATE_PERIOD_PROPERTY, value, "1");
+#else
+        property_get(USE_ALTERNATE_PERIOD_PROPERTY, value, "0");
+#endif
+        if (!strcmp("1", value))
+            out->config = pcm_config_alt;
+
+#ifdef SOC_SCX35
+        property_get(USE_HW_IRQ_PROPERTY, value, "1");
+#else
+        property_get(USE_HW_IRQ_PROPERTY, value, "0");
+#endif
+        if (!strcmp("1", value))
+            flags &= ~PCM_NOIRQ;
+    }
+
+
+        out->pcm = pcm_open(card, port, flags, &out->config);
 
         if (!pcm_is_ready(out->pcm)) {
             ALOGE("cannot open pcm_out driver: %s", pcm_get_error(out->pcm));
@@ -3317,6 +3369,18 @@ static int adev_open_output_stream(struct audio_hw_device *dev,
     }
     else {
 	out->config = pcm_config_mm_fast;
+    }
+
+    {
+        char value[PROPERTY_VALUE_MAX];
+
+#ifdef SOC_SCX35
+        property_get(USE_ALTERNATE_PERIOD_PROPERTY, value, "1");
+#else
+        property_get(USE_ALTERNATE_PERIOD_PROPERTY, value, "0");
+#endif
+        if (!strcmp("1", value))
+            out->config = pcm_config_alt;
     }
 
     out->dev = ladev;

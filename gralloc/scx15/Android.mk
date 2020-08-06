@@ -101,33 +101,11 @@ LOCAL_CFLAGS += -DFORCE_HWC_CONTIG
 # This tweaks the logic a bit and forces all GRALLOC_USAGE_OVERLAY_BUFFER
 # to MM and all HWC buffer to the carveout.
 #
-# Will also enable TARGET_ION_MM_FALLBACK if not set so that the OVERLAY will act
-# as a fallback buffer when an MM allocation fails.
-#
 # Lastly, when allocation for the HWC fail, it will be retried on MM.
 # Only when it fails again, then it falls back to virtual memory allocation.
 ifeq ($(TARGET_ION_OVERLAY_IS_CARVEOUT), true)
 LOCAL_CFLAGS += -DION_OVERLAY_IS_CARVEOUT
-
-	# Set TARGET_ION_MM_FALLBACK to true if not set
-	ifeq ($(TARGET_ION_MM_FALLBACK), )
-	TARGET_ION_MM_FALLBACK := true
-	endif
 endif
-endif
-
-# When allocation fails under ION_HEAP_ID_MASK_MM, retry again
-# under ION_HEAP_ID_MASK_OVERLAY supposing the two are in two
-# separate memory pools.
-ifeq ($(TARGET_ION_MM_FALLBACK), true)
-LOCAL_CFLAGS += -DALLOW_MM_FALLBACK
-endif
-
-# Indicates that the kernel has an extra ION carveout at mask 0x16
-# and can be used to retry failed allocations.
-# WARNING: The kernel MUST have that extra carveout or it may cause problems.
-ifeq ($(TARGET_HAS_RESERVED_CARVEOUT), true)
-LOCAL_CFLAGS += -DKERNEL_HAS_RESERVED_CARVEOUT
 endif
 
 # Make Gralloc assume the FB have 3 screen buffers (triple buffers)

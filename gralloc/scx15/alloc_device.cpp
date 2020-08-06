@@ -308,18 +308,6 @@ static int gralloc_alloc_buffer(alloc_device_t* dev, size_t size, int usage, buf
 
         ret = ion_alloc(m->ion_client, size, 0, ion_heap_mask, ion_flag, &ion_hnd);
 
-#if defined(ALLOW_MM_FALLBACK)
-         /*
-          * Addendum 6: Retry failed allocations from MM in Overlay.
-          * Suppose OVERLAY and MM is separate, try to borrow memory in OVERLAY.
-          */
-        if (ret && (usage & (GRALLOC_USAGE_VIDEO_BUFFER|GRALLOC_USAGE_CAMERA_BUFFER))){
-            ALOGW("Cannot allocate in ION MM, falling back to OVERLAY");
-            ion_heap_mask = ION_HEAP_ID_MASK_OVERLAY;
-            ret = ion_alloc(m->ion_client, size, 0, ion_heap_mask, ion_flag, &ion_hnd);
-        }
-#endif
-
 #ifdef FORCE_HWC_CONTIG
         /*
          * Addendum 2: If the assumption on Addendum 1 fails, revert back to
@@ -331,7 +319,7 @@ static int gralloc_alloc_buffer(alloc_device_t* dev, size_t size, int usage, buf
             !(usage & (GRALLOC_USAGE_VIDEO_BUFFER|GRALLOC_USAGE_CAMERA_BUFFER|GRALLOC_USAGE_OVERLAY_BUFFER))
         ){
 
-#if defined(ALLOW_MM_FALLBACK)
+#if defined(ION_OVERLAY_IS_CARVEOUT)
             ALOGW("HWC buffer allocation failed, falling back to MM");
             ion_heap_mask = ION_HEAP_ID_MASK_MM;
             ret = ion_alloc(m->ion_client, size, 0, ion_heap_mask, ion_flag, &ion_hnd);
@@ -342,25 +330,6 @@ static int gralloc_alloc_buffer(alloc_device_t* dev, size_t size, int usage, buf
                 ion_heap_mask = ION_HEAP_ID_MASK_SYSTEM;
                 ret = ion_alloc(m->ion_client, size, 0, ion_heap_mask, ion_flag, &ion_hnd);
             }
-        }
-#endif
-
-#ifdef KERNEL_HAS_RESERVED_CARVEOUT
-        /*
-         * Addendum 4: It's possible that even with the page migration powers of CMA
-         * or in low memory conditions, an allocation is not possible. This is
-         * often the case when allocating megabytes of physically contiguous
-         * memory like a 5MP camera buffer -- 1.5*5*10^6 (~7.15MB)
-         * or a video decoder buffer for 1080p videos. (~2.9MB).
-         *
-         * GRALLOC_USAGE_HW_COMPOSER should _NOT_ be given another chance nor
-         * GRALLOC_USAGE_OVERLAY_BUFFER.
-         */
-        if (ret && (usage & (GRALLOC_USAGE_VIDEO_BUFFER|GRALLOC_USAGE_CAMERA_BUFFER)))
-        {
-            ALOGW("Allocation failed, Trying to use the reserved carveout.");
-            ion_heap_mask = ION_HEAP_ID_MASK_RESERVED;
-            ret = ion_alloc(m->ion_client, size, 0, ion_heap_mask, ion_flag, &ion_hnd);
         }
 #endif
 

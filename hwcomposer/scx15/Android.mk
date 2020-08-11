@@ -40,7 +40,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libui \
 	libsync \
 	libmemoryheapion \
-	libbfqio_vendor
+	libbfqio
 
 LOCAL_STATIC_LIBRARIES := \
 	libHWCUtils \

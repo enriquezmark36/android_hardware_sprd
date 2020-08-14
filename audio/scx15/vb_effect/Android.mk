@@ -21,7 +21,7 @@ include $(CLEAR_VARS)
 LOCAL_CFLAGS := \
 	-D_POSIX_SOURCE \
 	-Wno-multichar \
-	-g
+	-Wno-error
 
 ifneq (,$(filter sc8830 scx15,$(TARGET_BOARD_PLATFORM)))
 BOARD_EQ_DIR := v2

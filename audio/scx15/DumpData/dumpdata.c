@@ -36,9 +36,9 @@
 //#define XDUMP_DEBUG
 
 #ifdef XDUMP_DEBUG
-#define XDUMP_TRACE  ALOGW
+#define XDUMP_TRACE ALOGW
 #else
-#define XDUMP_TRACE
+#define XDUMP_TRACE(...) ((void)0)
 #endif
 
 
@@ -64,8 +64,7 @@ FILE *AUDIO_OUT_fd[DUMP_FILE_MAX_NUM];
 
 static  aud_dump_item_t *dump_create_mem(aud_dump_t  *aud_dump_info, const char *num)
 {	
-    aud_dump_item_t *a;
-	     XDUMP_TRACE("enter dump_create_mem---");
+    XDUMP_TRACE("enter dump_create_mem---");
     if (!atoi((char *)num)) {
         ALOGE("Unnormal dump item num!");
         return NULL;
@@ -102,10 +101,8 @@ static void dump_start_tag(void *data, const XML_Char *tag_name,
     struct dump_parse_state *state = data;
     aud_dump_t  *aud_dump_info = NULL;
 
-    unsigned int i;
-    int value ,ret = 0;
-    struct mixer_ctl *ctl;
-   int s_len = 0;
+    int ret = 0;
+    int s_len = 0;
 
 
      XDUMP_TRACE("enter dump_start_tag---%s ",tag_name);
@@ -223,12 +220,12 @@ static void dump_start_tag(void *data, const XML_Char *tag_name,
 	
 
 
-attr_err:
     return;
 }
 static void dump_end_tag(void *data, const XML_Char *tag_name)
 {
-    struct modem_config_parse_state *state = data;
+    (void)data;
+    (void)tag_name;
 	XDUMP_TRACE("dump_end_tag----!");
 }
 
@@ -240,7 +237,6 @@ int dump_parse_xml()
     FILE *file;
     int bytes_read;
     void *buf;
-    int i;
     int ret = 0;
 
 	XDUMP_TRACE("enter dump_parse_xml----");
@@ -334,9 +330,8 @@ err_calloc:
 static int dump_open_file(int index )
 {
 	char AUDIO_OUT_FILE_PATH[PROPERTY_VALUE_MAX]; //"data/audio_out.pcm"
-	char   attr[DUMP_FILE_MAX_NUM*2];
 	char  * w_file_path = NULL;
-	int 	ret= 0 ;
+
 	//aud_dump_file_info[index].fp =  NULL;
 	AUDIO_OUT_FILE_PATH[0] = '\0';
 	
@@ -428,7 +423,7 @@ int  dump_data(dump_data_info_t dump_info)
 int dump_close_file()
 {
 	int	i;
-	char * file_path;
+
 	for( i = 0 ; i < DUMP_FILE_MAX_NUM ; i ++)
 	{
 		if( NULL !=  aud_dump_file_info[i].fp)

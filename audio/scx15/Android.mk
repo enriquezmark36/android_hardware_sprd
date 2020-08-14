@@ -30,7 +30,7 @@ LOCAL_PROPRIETARY_MODULE := true
 LOCAL_CFLAGS := \
 	-D_POSIX_SOURCE \
 	-Wno-multichar \
-	-g \
+	-Wno-error \
 
 ifeq ($(BOARD_USES_LINE_CALL), true)
 LOCAL_CFLAGS += -D_VOICE_CALL_VIA_LINEIN

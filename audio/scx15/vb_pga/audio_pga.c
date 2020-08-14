@@ -22,6 +22,7 @@
 #include <expat.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <cutils/log.h>
 
@@ -380,7 +381,6 @@ struct audio_pga *audio_pga_init(struct mixer *mixer)
 	FILE *file;
 	int bytes_read;
 	void *buf;
-	int i;
 	struct audio_pga *pga;
 
 	pga = calloc(1, sizeof(struct audio_pga));

@@ -190,7 +190,7 @@ extern "c"
  BOOLEAN RECORD_EQ_BAND_SW[RECORDEQ_MAX_BAND] =  {0}; 
  int16_t s_cur_recordeq_master_gain = 0; //sacled by 1024
 
- int16_t s_cur_recordeq_para[RECORDEQ_MAX_BAND][5] = {0};
+ int16_t s_cur_recordeq_para[RECORDEQ_MAX_BAND][5] = {{0},};
  int16_t s_cur_recordeq_s_gain[RECORDEQ_MAX_BAND]  = {0};//sacled by 4096
  int32_t CUR_RECORD_EQ_L_D1[RECORDEQ_MAX_BAND] = {0}; //%long
  int32_t CUR_RECORD_EQ_L_D2[RECORDEQ_MAX_BAND] = {0}; //%long
@@ -923,7 +923,7 @@ static BOOLEAN AUDPROC_Initeq(
     RECORDEQ_CONTROL_PARAM_T *recordeq_param_ptr,
     int32_t       Fs)
 {
-    REC_IIR_FILTER_PARA_T  recordeq_filter_set[RECORDEQ_MAX_BAND] = {0};//out
+    REC_IIR_FILTER_PARA_T  recordeq_filter_set[RECORDEQ_MAX_BAND];//out
     int16_t  i=0;
 
     //RECORD_EQ_SW = recordeq_param_ptr->RECORDEQ_SW;
@@ -1274,8 +1274,8 @@ void  AUDPROC_ProcessDp(
     int16_t  xout_R_H   =  0;//higher word
     int16_t  xout_R_L   =  0;//lower word
 
-    int16_t  lcf_gain_l = 0;//scaled by 1024 
-    int16_t  lcf_gain_r = 0;  //scaled by 1024
+    //int16_t  lcf_gain_l = 0;//scaled by 1024
+    //int16_t  lcf_gain_r = 0;  //scaled by 1024
     //int32_t  out_left = 0;
     //int32_t  out_right = 0;   
     int64  out_left = 0;
@@ -1286,7 +1286,7 @@ void  AUDPROC_ProcessDp(
     int32_t  dp_out_power = 0;
     int32_t  attack_gain = 0,release_gain = 0;
     
-    for(si=0;si<uiSrcCount;si++)//AUDIO POST PROCESS
+    for(si=0;(uint32_t)si<uiSrcCount;si++)//AUDIO POST PROCESS
     {
         //get decoder left and right
         sl = psSrcLeftData[si];// s(si,1);

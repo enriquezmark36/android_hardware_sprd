@@ -21,7 +21,7 @@ include $(CLEAR_VARS)
 LOCAL_CFLAGS := \
 	-D_POSIX_SOURCE \
 	-Wno-multichar \
-	-g \
+	-Wno-error \
 
 LOCAL_C_INCLUDES += \
 	external/tinyalsa/include \

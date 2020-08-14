@@ -19,6 +19,7 @@
 
 #include <cutils/log.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -80,6 +81,8 @@ static int set_light_backlight(struct light_device_t *dev,
         int err = 0;
         int brightness = rgb_to_brightness(state);
 
+        (void) dev;
+
         ALOGV("file:%s, func:%s, brightness=%d\n", __FILE__, __func__, brightness);
         if(NULL==LIGHT_BACKLIGHT) {
                 ALOGE("file:%s, func:%s, unsupported light!\n", __FILE__, __func__);
@@ -104,6 +107,8 @@ static int set_light_keyboard(struct light_device_t* dev,
         int err = 0;
         int on = is_lit(state);
 
+        (void) dev;
+
         ALOGV("file:%s, func:%s, on=%d\n", __FILE__, __func__, on);
         if(NULL==LIGHT_KEYBOARD) {
                 ALOGE("file:%s, func:%s, unsupported light!\n", __FILE__, __func__);
@@ -122,6 +127,7 @@ static int set_light_buttons(struct light_device_t* dev,
         int err = 0;
         int on = is_lit(state);
 
+        (void) dev;
         ALOGV("file:%s, func:%s, on=%d\n", __FILE__, __func__, on);
         if(NULL==LIGHT_BUTTONS) {
                 ALOGE("file:%s, func:%s, unsupported light!\n", __FILE__, __func__);
@@ -137,6 +143,7 @@ static int set_light_buttons(struct light_device_t* dev,
 
 static int close_lights(struct light_device_t *dev)
 {
+        (void) dev;
         ALOGV("file:%s, func:%s\n", __FILE__, __func__);
         if (dev)
                 free(dev);
@@ -148,6 +155,8 @@ static int close_lights(struct light_device_t *dev)
 static int set_light_leds_notifications(struct light_device_t *dev,
                                         struct light_state_t const *state)
 {
+        (void) dev;
+        (void) state;
         ALOGE("file:%s, func:%s, unsupported light!\n", __FILE__, __func__);
         return -EINVAL;
 }
@@ -155,6 +164,8 @@ static int set_light_leds_notifications(struct light_device_t *dev,
 static int set_light_leds_attention(struct light_device_t *dev,
                                     struct light_state_t const *state)
 {
+        (void) state;
+        (void) dev;
         ALOGE("file:%s, func:%s, unsupported light!\n", __FILE__, __func__);
         return -EINVAL;
 }

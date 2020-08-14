@@ -51,14 +51,12 @@ int sprd_check_memory(pid_t pid, enum memtrack_type type,
                              size_t *num_records)
 {
 	size_t allocated_records = min(*num_records, ARRAY_SIZE(record_templates));
-	int i;
 	FILE *fp;
 	FILE *smaps_fp = NULL;
 	char line[1024];
 	char tmp[128];
 	size_t accounted_size = 0;
 	size_t unaccounted_size = 0;
-	unsigned long smaps_addr = 0;
 	unsigned int pid_gl;
 	*num_records = ARRAY_SIZE(record_templates);
 
@@ -90,9 +88,7 @@ int sprd_check_memory(pid_t pid, enum memtrack_type type,
 	}
 
 	while (1) {
-		unsigned long uaddr;
 		unsigned long size;
-		char line_type[7];
 		int ret;
 
 		if (fgets(line, sizeof(line), fp) == NULL) {
@@ -105,7 +101,7 @@ int sprd_check_memory(pid_t pid, enum memtrack_type type,
 		if (ret != 2) {
 			continue;
 		}
-		ALOGV("sprd_check_memory read line from gl ,pid:%d, size:%x",pid_gl,size);
+		ALOGV("sprd_check_memory read line from gl ,pid:%d, size:%lx",pid_gl,size);
 		if (pid_gl !=(unsigned int)pid)
 			continue;
 

@@ -39,8 +39,7 @@
 using namespace android;
 
 SprdVirtualDisplayDevice:: SprdVirtualDisplayDevice()
-    : mDebugFlag(0),
-      mDumpFlag(0)
+    : mDebugFlag(0)
 {
 
 }
@@ -50,7 +49,7 @@ SprdVirtualDisplayDevice:: ~SprdVirtualDisplayDevice()
 
 }
 
-int SprdVirtualDisplayDevice:: getDisplayAttributes(DisplayAttributes *dpyAttributes)
+int SprdVirtualDisplayDevice:: getDisplayAttributes(DisplayAttributes */*dpyAttributes*/)
 {
     return 0;
 }
@@ -71,7 +70,6 @@ int SprdVirtualDisplayDevice:: prepare(hwc_display_contents_1_t *list)
 
 int SprdVirtualDisplayDevice:: commit(hwc_display_contents_1_t *list)
 {
-    int releaseFenceFd = -1;
     hwc_layer_1_t *FBTargetLayer = NULL;
 
     queryDebugFlag(&mDebugFlag);
@@ -88,9 +86,6 @@ int SprdVirtualDisplayDevice:: commit(hwc_display_contents_1_t *list)
         ALOGE("VirtualDisplay FBTLayer is NULL");
         return -1;
     }
-
-    const native_handle_t *pNativeHandle = FBTargetLayer->handle;
-    struct private_handle_t *privateH = (struct private_handle_t *)pNativeHandle;
 
     ALOGI_IF(mDebugFlag, "Start Display VirtualDisplay FBT layer");
 

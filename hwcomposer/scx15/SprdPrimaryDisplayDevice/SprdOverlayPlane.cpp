@@ -112,8 +112,6 @@ SprdOverlayPlane::~SprdOverlayPlane()
 
 private_handle_t* SprdOverlayPlane::dequeueBuffer()
 {
-    bool ret = false;
-
     queryDebugFlag(&mDebugFlag);
     queryDumpFlag(&mDumpFlag);
 

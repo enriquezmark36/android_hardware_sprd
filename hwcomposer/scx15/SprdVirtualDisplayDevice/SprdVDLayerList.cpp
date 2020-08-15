@@ -157,7 +157,7 @@ int SprdVDLayerList:: updateGeometry(hwc_display_contents_1_t *list)
     return 0;
 }
 
-int SprdVDLayerList:: revistGeometry(hwc_display_contents_1_t *list)
+int SprdVDLayerList:: revistGeometry(hwc_display_contents_1_t */*list*/)
 {
 #ifdef FORCE_HWC_COPY_FOR_VIRTUAL_DISPLAYS
     SprdHWLayer *l = &(mLayerList[0]);
@@ -204,13 +204,13 @@ int SprdVDLayerList:: revistGeometry(hwc_display_contents_1_t *list)
     return 0;
 }
 
-int SprdVDLayerList:: prepareOSDLayer(SprdHWLayer *l)
+int SprdVDLayerList:: prepareOSDLayer(SprdHWLayer */*l*/)
 {
 
     return 0;
 }
 
-int SprdVDLayerList:: prepareVideoLayer(SprdHWLayer *l)
+int SprdVDLayerList:: prepareVideoLayer(SprdHWLayer */*l*/)
 {
 
     return 0;

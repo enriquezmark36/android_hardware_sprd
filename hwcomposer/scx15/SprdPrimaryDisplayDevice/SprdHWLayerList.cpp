@@ -260,7 +260,6 @@ int SprdHWLayerList:: revisitGeometry(int *DisplayFlag, SprdPrimaryDisplayDevice
     int i = -1;
     bool postProcessVideoCond = false;
     mSkipLayerFlag = false;
-    int LayerCount = mLayerCount;
 
     if (mDisableHWCFlag)
     {
@@ -337,7 +336,7 @@ int SprdHWLayerList:: revisitGeometry(int *DisplayFlag, SprdPrimaryDisplayDevice
          *  if the RGB layer is bottom layer and there is no other layer,
          *  go overlay.
          * */
-        bool singleRGBLayerCond = ((RGBIndex == 0) && (LayerCount == 2));
+        bool singleRGBLayerCond = ((RGBIndex == 0) && (mLayerCount == 2));
         if (singleRGBLayerCond)
         {
             ALOGI_IF(mDebugFlag, "Force single OSD layer go to Overlay");
@@ -354,7 +353,7 @@ int SprdHWLayerList:: revisitGeometry(int *DisplayFlag, SprdPrimaryDisplayDevice
         if (YUVLayer)
         {
             supportYUVLayerCond = ((RGBLayer == NULL) ||
-                                   (RGBLayer && ((RGBIndex + 1) == LayerCount - 1) &&
+                                   (RGBLayer && ((RGBIndex + 1) == (mLayerCount - 1)) &&
                                     (YUVIndex == RGBIndex -1)));
         }
 #endif
@@ -426,6 +425,7 @@ int SprdHWLayerList:: revisitGeometry(int *DisplayFlag, SprdPrimaryDisplayDevice
     if (postProcessVideoCond)
     {
 #ifndef OVERLAY_COMPOSER_GPU
+        (void) DisplayFlag;
         resetOverlayFlag(YUVLayer);
         if (RGBLayer)
         {
@@ -434,7 +434,7 @@ int SprdHWLayerList:: revisitGeometry(int *DisplayFlag, SprdPrimaryDisplayDevice
         }
         mFBLayerCount++;
 #else
-        revisitOverlayComposerLayer(YUVLayer, RGBLayer, LayerCount, &mFBLayerCount, DisplayFlag);
+        revisitOverlayComposerLayer(YUVLayer, RGBLayer, mLayerCount, &mFBLayerCount, DisplayFlag);
 #endif
     }
     else if (YUVLayer)

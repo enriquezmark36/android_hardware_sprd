@@ -91,7 +91,6 @@ SprdPrimaryPlane::~SprdPrimaryPlane()
 
 private_handle_t* SprdPrimaryPlane::dequeueBuffer()
 {
-    bool ret = false;
     int localThreadID = -1;
 
     queryDebugFlag(&mDebugFlag);

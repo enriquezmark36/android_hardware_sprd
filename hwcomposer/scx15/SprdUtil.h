@@ -152,7 +152,6 @@ public:
           outBufferPhy(0),
           outBufferSize(0),
 #endif
-          mInitFlag(0),
           mDebugFlag(0)
     {
 
@@ -180,7 +179,6 @@ private:
     int outBufferPhy;
     int outBufferSize;
 #endif
-    int mInitFlag;
     int mDebugFlag;
 
 #ifdef TRANSFORM_USE_GPU

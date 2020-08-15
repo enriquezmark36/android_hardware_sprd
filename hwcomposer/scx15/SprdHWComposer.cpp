@@ -267,7 +267,7 @@ int SprdHWComposer:: blank(int disp, int blank)
     return 0;
 }
 
-int SprdHWComposer:: query(int what, int* value)
+int SprdHWComposer:: query(int /*what*/, int* value)
 {
 #ifdef HWC_SUPPORT
     *value = 1;
@@ -277,7 +277,7 @@ int SprdHWComposer:: query(int what, int* value)
     return 0;
 }
 
-void SprdHWComposer:: dump(char *buff, int buff_len)
+void SprdHWComposer:: dump(char */*buff*/, int /*buff_len*/)
 {
 }
 
@@ -314,7 +314,7 @@ int SprdHWComposer:: getDisplayConfigs(int disp, uint32_t* configs, size_t* numC
     return ret;
 }
 
-int SprdHWComposer:: getDisplayAttributes(int disp, uint32_t config, const uint32_t* attributes, int32_t* value)
+int SprdHWComposer:: getDisplayAttributes(int disp, uint32_t /*config*/, const uint32_t* attributes, int32_t* value)
 {
     if (DISPLAY_EXTERNAL == disp && !(mDisplayAttributes[disp].connected))
     {
@@ -385,7 +385,7 @@ void SprdHWComposer:: registerProcs(hwc_procs_t const* procs)
     mPrimaryDisplay->setVsyncEventProcs(const_cast<hwc_procs_t *>(procs));
 }
 
-bool SprdHWComposer:: eventControl(int disp, int enabled)
+bool SprdHWComposer:: eventControl(int /*disp*/, int enabled)
 {
 
     /*
@@ -620,19 +620,19 @@ static int hwc_device_open(const struct hw_module_t* module, const char* name, s
 }
 
 static struct hw_module_methods_t hwc_module_methods = {
-    open: hwc_device_open
+    .open = hwc_device_open
 };
 
 hwc_module_t HAL_MODULE_INFO_SYM = {
-    common: {
-        tag: HARDWARE_MODULE_TAG,
-        version_major: 2,
-        version_minor: 0,
-        id: HWC_HARDWARE_MODULE_ID,
-        name: "SPRD HWComposer Module",
-        author: "The Android Open Source Project",
-        methods: &hwc_module_methods,
-        dso: 0,
-        reserved: {0},
+    .common = {
+        .tag = HARDWARE_MODULE_TAG,
+        .version_major = 2,
+        .version_minor = 0,
+        .id = HWC_HARDWARE_MODULE_ID,
+        .name = "SPRD HWComposer Module",
+        .author = "The Android Open Source Project",
+        .methods = &hwc_module_methods,
+        .dso = 0,
+        .reserved = {0},
     }
 };

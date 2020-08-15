@@ -306,7 +306,6 @@ bool SprdDisplayPlane:: openBase()
 
 bool SprdDisplayPlane::open()
 {
-    private_handle_t* buffer = NULL;
 #ifdef DYNAMIC_RELEASE_PLANEBUFFER
     int ret = -1;
     ret = mAlloc->requestAllocBuffer();
@@ -356,7 +355,7 @@ private_handle_t* SprdDisplayPlane::getPlaneBuffer()
     return NULL;
 }
 
-void SprdDisplayPlane::getPlaneGeometry(unsigned int *width, unsigned int *height, int *format)
+void SprdDisplayPlane::getPlaneGeometry(unsigned int */*width*/, unsigned int */*height*/, int */*format*/)
 {
 
 }

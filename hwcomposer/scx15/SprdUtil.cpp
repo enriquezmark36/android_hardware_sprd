@@ -50,7 +50,6 @@ OSDTransform::OSDTransform(FrameBufferInfo *fbInfo)
     :  mL(NULL),
        mFBInfo(fbInfo),
        mBuffer(NULL),
-       mInitFLag(false),
        mDebugFlag(0)
 {
 #ifdef _PROC_OSD_WITH_THREAD
@@ -213,6 +212,11 @@ SprdUtil::~SprdUtil()
 bool SprdUtil::transformLayer(SprdHWLayer *l1, SprdHWLayer *l2,
                          private_handle_t* buffer1, private_handle_t* buffer2)
 {
+    (void) l1;
+    (void) l2;
+    (void) buffer1;
+    (void) buffer2;
+
 #ifdef TRANSFORM_USE_DCAM
     if (l2 && buffer2)
     {
@@ -297,13 +301,14 @@ bool SprdUtil::transformLayer(SprdHWLayer *l1, SprdHWLayer *l2,
 }
 
 #ifdef PROCESS_VIDEO_USE_GSP
+#if 0
 /*
 func:test_set_y
 desc:add a white-line framework in source video layer, only for test purpose
 */
 static void test_set_y(char* base,uint32_t w,uint32_t h)
 {
-    uint32_t i=0,r=0,c0=0,c1=0,c2=0,c3=0,c4=0;
+    uint32_t r=0,c0=0,c1=0,c2=0,c3=0,c4=0;
     char* base_walk = base;
     uint32_t first_r=0,second_r=16;
     uint32_t first_c=0,second_c=16;
@@ -332,7 +337,7 @@ static void test_set_y(char* base,uint32_t w,uint32_t h)
         r++;
     }
 }
-
+#endif
 int SprdUtil::openGSPDevice()
 {
     hw_module_t const* pModule;
@@ -507,6 +512,8 @@ int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t*
     bool reuse_dest = false;
     bool force_RGB_dest = false;
 #endif
+
+    (void) mmu_addr;
 
     queryDebugFlag(&mDebugFlag);
 
@@ -1042,7 +1049,7 @@ int SprdUtil::composerLayers(SprdHWLayer *l1, SprdHWLayer *l2, private_handle_t*
         gsp_cfg_info.layer_des_info.src_addr.addr_v =
             gsp_cfg_info.layer_des_info.src_addr.addr_uv = current_overlay_paddr + mFBInfo->fb_width * mFBInfo->fb_height;
         gsp_cfg_info.layer_des_info.pitch = mFBInfo->fb_width;
-        if((gsp_cfg_info.layer_des_info.src_addr.addr_y == 0)/*||(buffersize_layerd == 0)*/)
+        if((gsp_cfg_info.layer_des_info.src_addr.addr_y == 0) || 0/*||(buffersize_layerd == 0)*/)
         {
             ALOGE("GSP process Line%d,des.y_addr==%x buffersize_layerd==%x!",__LINE__,gsp_cfg_info.layer_des_info.src_addr.addr_y,buffer->size);
             return -1;

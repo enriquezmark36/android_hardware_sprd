@@ -75,7 +75,6 @@ public:
 
 private:
     int mDebugFlag;
-    int mDumpFlag;
 };
 
 #endif

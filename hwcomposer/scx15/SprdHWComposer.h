@@ -70,8 +70,7 @@ public:
           mVirtualDisplay(0),
           mFBInfo(0),
           mInitFlag(0),
-          mDebugFlag(0),
-          mDumpFlag(0)
+          mDebugFlag(0)
     {
 
     }
@@ -140,7 +139,6 @@ private:
     DisplayAttributes mDisplayAttributes[MAX_DISPLAYS];
     int mInitFlag;
     int mDebugFlag;
-    int mDumpFlag;
 
     void resetDisplayAttributes();
 

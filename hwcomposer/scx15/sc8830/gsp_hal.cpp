@@ -40,7 +40,7 @@ static int32_t gsp_hal_layer0_params_check (GSP_LAYER0_CONFIG_INFO_T *layer0_inf
 {
     float coef_factor_w = 0.0;
     float coef_factor_h = 0.0;
-    uint32_t pixel_cnt = 0x1000000;//max 16M pixel
+//     uint32_t pixel_cnt = 0x1000000;//max 16M pixel
 
     if(layer0_info->layer_en == 0) {
         return GSP_NO_ERR;
@@ -226,7 +226,7 @@ static int32_t gsp_hal_layer0_params_check (GSP_LAYER0_CONFIG_INFO_T *layer0_inf
 
 static int32_t gsp_hal_layer1_params_check(GSP_LAYER1_CONFIG_INFO_T *layer1_info)
 {
-    uint32_t pixel_cnt = 0x1000000;//max 16M pixel
+//     uint32_t pixel_cnt = 0x1000000;//max 16M pixel
 
     if(layer1_info->layer_en == 0) {
         return GSP_NO_ERR;
@@ -382,11 +382,12 @@ static int32_t gsp_hal_misc_params_check(GSP_CONFIG_INFO_T *gsp_cfg_info)
 
 static int32_t gsp_hal_layerdes_params_check(GSP_CONFIG_INFO_T *gsp_cfg_info)
 {
+/*
     uint32_t pixel_cnt = 0x1000000;//max 16M pixel
     uint32_t max_h0 = 4096;//max 4k
     uint32_t max_h1 = 4096;//max 4k
     uint32_t max_h = 4096;//max 4k
-
+*/
     GSP_LAYER0_CONFIG_INFO_T    *layer0_info = &gsp_cfg_info->layer0_info;
     GSP_LAYER1_CONFIG_INFO_T    *layer1_info = &gsp_cfg_info->layer1_info;
     GSP_LAYER_DES_CONFIG_INFO_T *layer_des_info = &gsp_cfg_info->layer_des_info;
@@ -845,7 +846,8 @@ static GSP_ROT_ANGLE_E HAL2Kernel_RotMirrConvert(int degree)
     return result_degree;
 }
 
-
+// Unused functions
+#if 0
 /*
 func:HAL2Kernel_RotSrcColorFormatConvert
 */
@@ -930,7 +932,7 @@ static GSP_ROT_ANGLE_E HAL2Kernel_ScaleAngleConvert(HW_ROTATION_MODE_E rotation)
     }
     return result_degree;
 }
-
+#endif
 
 int camera_rotation_copy_data(uint32_t width, uint32_t height, uint32_t in_addr, uint32_t out_addr)
 {
@@ -972,7 +974,7 @@ int camera_rotation_copy_data(uint32_t width, uint32_t height, uint32_t in_addr,
 
 }
 
-int camera_rotation_copy_data_from_virtual(uint32_t width, uint32_t height, uint32_t in_virtual_addr, uint32_t out_addr)
+int camera_rotation_copy_data_from_virtual(uint32_t /*width*/, uint32_t /*height*/, uint32_t /*in_virtual_addr*/, uint32_t /*out_addr*/)
 {
     ALOGE("%s:%d,gsp not support virtual address !\n", __func__, __LINE__);
     return -1;
@@ -1026,19 +1028,19 @@ int32_t camera_rotation(HW_ROTATION_DATA_FORMAT_E rot_format,
 #ifndef USE_GPU_PROCESS_VIDEO
 
 int transform_layer(uint32_t srcPhy,//src  phy_addr_y
-                    uint32_t srcVirt,//src  virt_addr_y
+                    uint32_t /*srcVirt*/,//src  virt_addr_y
                     uint32_t srcFormat,//src color
                     uint32_t transform,//rotation and mirror
                     uint32_t srcWidth,//src pitch
                     uint32_t srcHeight ,//src slice
                     uint32_t dstPhy ,//des  phy_addr_y
-                    uint32_t dstVirt,//des  virt_addr_y
+                    uint32_t /*dstVirt*/,//des  virt_addr_y
                     uint32_t dstFormat ,//des color
                     uint32_t dstWidth,//des pitch
                     uint32_t dstHeight , //des slice
                     struct sprd_rect *trim_rect ,
-                    uint32_t tmp_phy_addr,
-                    uint32_t tmp_vir_addr)
+                    uint32_t /*tmp_phy_addr*/,
+                    uint32_t /*tmp_vir_addr*/)
 {
     int ret = GSP_NO_ERR;
     GSP_CONFIG_INFO_T gsp_cfg_info;
@@ -1497,7 +1499,7 @@ static int stretch_gsp(
     gsp_image_t const *dst,
     gsp_rect_t const *src_rect,
     gsp_rect_t const *dst_rect,
-    gsp_region_t const *region)
+    gsp_region_t const */*region*/)
 {
     int status = GSP_NO_ERR;
     unsigned int     src_phyaddr = 0;
@@ -1654,7 +1656,7 @@ static int blit_gsp(
 
 /** Open a new instance of a copybit device using name */
 static int open_gsp(const struct hw_module_t* module,
-                    const char* name,
+                    const char* /*name*/,
                     struct hw_device_t** device)
 {
     int status = GSP_NO_ERR;
@@ -1699,8 +1701,7 @@ exit:
 
 
 static struct hw_module_methods_t gsp_module_methods = {
-open:
-    open_gsp
+    .open = open_gsp
 };
 
 
@@ -1708,20 +1709,14 @@ open:
  * The COPYBIT Module
  */
 gsp_module_t HAL_MODULE_INFO_SYM = {
-common:
-    {
-tag:
-        HARDWARE_MODULE_TAG,
-        version_major: 1,
-        version_minor: 0,
-id:
-        GSP_HARDWARE_MODULE_ID,
-name: "SPRD 2D Accelerate Module"
-        ,
-author: "Google, Inc."
-        ,
-methods:
-        &gsp_module_methods
+    .common = {
+        .tag = HARDWARE_MODULE_TAG,
+        .version_major = 1,
+        .version_minor = 0,
+        .id = GSP_HARDWARE_MODULE_ID,
+        .name = "SPRD 2D Accelerate Module",
+        .author = "Google, Inc.",
+        .methods = &gsp_module_methods
     }
 };
 

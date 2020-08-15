@@ -50,7 +50,6 @@ SprdPrimaryDisplayDevice:: SprdPrimaryDisplayDevice()
 #endif
      mVsyncEvent(0),
      mUtil(0),
-     mPostFrameBuffer(true),
      mHWCDisplayFlag(HWC_DISPLAY_MASK),
      mDebugFlag(0),
      mDumpFlag(0)

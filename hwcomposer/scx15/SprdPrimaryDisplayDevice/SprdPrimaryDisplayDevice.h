@@ -126,7 +126,6 @@ private:
 #endif
     sp<SprdVsyncEvent>  mVsyncEvent;
     SprdUtil          *mUtil;
-    bool mPostFrameBuffer;
     int mHWCDisplayFlag;
     int mDebugFlag;
     int mDumpFlag;

@@ -38,8 +38,7 @@
 using namespace android;
 
 SprdExternalDisplayDevice:: SprdExternalDisplayDevice()
-    : mDebugFlag(0),
-      mDumpFlag(0)
+    : mDebugFlag(0)
 {
 
 }
@@ -51,8 +50,6 @@ SprdExternalDisplayDevice:: ~SprdExternalDisplayDevice()
 
 int SprdExternalDisplayDevice:: getDisplayAttributes(DisplayAttributes *dpyAttributes)
 {
-    float refreshRate = 60.0;
-
     if (dpyAttributes == NULL)
     {
         ALOGE("Input parameter is NULL");
@@ -105,9 +102,6 @@ int SprdExternalDisplayDevice:: commit(hwc_display_contents_1_t *list)
         ALOGE("FBTargetLayer is NULL");
         return -1;
     }
-
-    const native_handle_t *pNativeHandle = FBTargetLayer->handle;
-    struct private_handle_t *privateH = (struct private_handle_t *)pNativeHandle;
 
     ALOGI_IF(mDebugFlag, "Start Displaying ExternalDisplay FramebufferTarget layer");
 

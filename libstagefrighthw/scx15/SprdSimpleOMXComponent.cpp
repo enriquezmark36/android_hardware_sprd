@@ -21,7 +21,7 @@
 #include "include/SprdSimpleOMXComponent.h"
 
 #include "gralloc_priv.h"
-#include "ion_sprd.h"
+#include <video/ion_sprd.h>
 
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/foundation/ALooper.h>
@@ -268,7 +268,7 @@ OMX_ERRORTYPE SprdSimpleOMXComponent::allocateBuffer(
         ptr = new OMX_U8[size+1024];
         OMX_U8* ptrAlign = (OMX_U8*)(((OMX_U32)ptr + 1023)&(~1023));
 
-        ALOGI("allocateBuffer, ptr=0x%x, ptrAlign=0x%x", ptr, ptrAlign);
+        ALOGI("allocateBuffer, ptr=%p, ptrAlign=%p", ptr, ptrAlign);
 
         err = useBuffer(header, portIndex, appPrivate, size, ptrAlign);
     } else {
@@ -451,7 +451,7 @@ void SprdSimpleOMXComponent::onMessageReceived(const sp<AMessage> &msg) {
                     pBufCtrl->iRefCount--;
                 }
                 if(pBufCtrl != NULL)
-                    ALOGI("fillThisBuffer, buffer: 0x%x, header: 0x%x, iRefCount: %d",buffer, header,pBufCtrl->iRefCount);
+                    ALOGI("fillThisBuffer, buffer: %p, header: %p, iRefCount: %d",buffer, header,pBufCtrl->iRefCount);
                 port->mQueue.push_back(buffer);
 
                 onQueueFilled(OMX_DirOutput);

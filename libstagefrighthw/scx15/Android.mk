@@ -59,7 +59,7 @@ LOCAL_MODULE := libstagefrighthw
 
 LOCAL_PROPRIETARY_MODULE := true
 
-LOCAL_CFLAGS:= -DLOG_TAG=\"$(TARGET_BOARD_PLATFORM).libstagefright\"
+LOCAL_CFLAGS:= -Wno-error=unused-parameter
 
 ifeq ($(strip $(SOC_SCX35)),true)
 LOCAL_CFLAGS += -DSOC_SCX35

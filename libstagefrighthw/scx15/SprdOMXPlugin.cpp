@@ -153,6 +153,7 @@ OMX_ERRORTYPE SprdOMXPlugin::enumerateComponents(
         OMX_STRING name,
         size_t size,
         OMX_U32 index) {
+    (void) size;
     if (index >= kNumComponents) {
         return OMX_ErrorNoMore;
     }

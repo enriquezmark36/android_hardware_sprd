@@ -47,9 +47,8 @@
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>
-//#include <linux/ion.h>
-#include "usr/include/linux/ion.h"
-#include "ion_sprd.h"
+#include <linux/ion.h>
+#include <video/ion_sprd.h>
 #define ION_DEVICE "/dev/ion"
 
 
@@ -617,7 +616,7 @@ static int alloc_device_alloc(alloc_device_t* dev, int w, int h, int format, int
 		default:
 			return -EINVAL;
 		}
-		size_t bpr = GRALLOC_ALIGN(w * bpp, 8);
+		size_t bpr = GRALLOC_ALIGN(w * bpp, align);
 		size = bpr * h;
 		stride = bpr / bpp;
 	}
@@ -673,7 +672,9 @@ static int alloc_device_alloc(alloc_device_t* dev, int w, int h, int format, int
 	else
 	#endif
 	{
+#if SPRD_ION
 AllocNormalBuffer:
+#endif
 		err = gralloc_alloc_buffer(dev, size, usage, pHandle);
 		 if(err>=0){
 			const native_handle_t *p_nativeh  = *pHandle;
@@ -853,7 +854,7 @@ static int alloc_device_close(struct hw_device_t *device)
 	return 0;
 }
 
-int alloc_device_open(hw_module_t const* module, const char* name, hw_device_t** device)
+int alloc_device_open(hw_module_t const* module, const char* /*name*/, hw_device_t** device)
 {
 	alloc_device_t *dev;
 

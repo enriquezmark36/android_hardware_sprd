@@ -18,6 +18,8 @@
 
 #include <string.h>
 #include <errno.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <stdlib.h>
 #include <sys/ioctl.h>
@@ -152,6 +154,7 @@ static int fb_set_swap_interval(struct framebuffer_device_t *dev, int interval)
 	return 0;
 }
 
+#if 0
 static int fb_setUpdateRect(struct framebuffer_device_t* dev,
         int l, int t, int w, int h)
 {
@@ -166,12 +169,13 @@ static int fb_setUpdateRect(struct framebuffer_device_t* dev,
 
 	return 0;
 }
+#endif
 
 /* SPRD: add for apct functions @{ */
 static void writeFpsToProc(float fps)
 {
     char fps_buf[256] = {0};
-    char *fps_proc = "/proc/benchMark/fps";
+    const char *fps_proc = "/proc/benchMark/fps";
     int fpsInt = (int)(fps+0.5);
     
     sprintf(fps_buf, "fps:%d", fpsInt);
@@ -204,7 +208,7 @@ bool getApctFpsSupport()
     gIsApctRead = true;
 
     char str[10] = {'\0'};
-    char *FILE_NAME = "/data/data/com.sprd.APCT/apct/apct_support";
+    const char *FILE_NAME = "/data/data/com.sprd.APCT/apct/apct_support";
 
     FILE *f = fopen(FILE_NAME, "r");
 
@@ -301,7 +305,6 @@ static int fb_post(struct framebuffer_device_t* dev, buffer_handle_t buffer)
 		             0, 0, m->info.xres, m->info.yres, NULL);
 
 		const size_t offset = hnd->base - m->framebuffer->base;
-		int interrupt;
 		m->info.activate = FB_ACTIVATE_VBL;
 		m->info.yoffset = offset / m->finfo.line_length;
 
@@ -747,6 +750,7 @@ int compositionComplete(struct framebuffer_device_t *dev)
 	   and because of their complexity compared to the Surface flinger jobs, the Surface flinger
 	   is normally faster even if it does everyhing synchronous and serial.
 	   */
+	(void) dev;
 	return 0;
 }
 
@@ -757,6 +761,7 @@ int framebuffer_device_open(hw_module_t const *module, const char *name, hw_devi
 	alloc_device_t *gralloc_device;
 	status = gralloc_open(module, &gralloc_device);
 
+	(void) name;
 	if (status < 0)
 	{
 		return status;

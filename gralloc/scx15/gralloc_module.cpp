@@ -19,15 +19,15 @@
 #include <errno.h>
 #include <pthread.h>
 #include <sys/ioctl.h>
-
+#include <fcntl.h>
+#include <string.h>
 #include <cutils/log.h>
 #include <cutils/atomic.h>
 #include <hardware/hardware.h>
 #include <hardware/gralloc.h>
 
-//#include <linux/ion.h>
-#include "usr/include/linux/ion.h"
-#include "ion_sprd.h"
+#include <linux/ion.h>
+#include <video/ion_sprd.h>
 
 #include "gralloc_priv.h"
 #include "alloc_device.h"
@@ -65,7 +65,7 @@ static int gralloc_device_open(const hw_module_t* module, const char* name, hw_d
 	return status;
 }
 
-static int gralloc_register_buffer(gralloc_module_t const *module, buffer_handle_t handle)
+static int gralloc_register_buffer(gralloc_module_t const */*module*/, buffer_handle_t handle)
 {
 	if (private_handle_t::validate(handle) < 0)
 	{
@@ -175,7 +175,6 @@ static int gralloc_register_buffer(gralloc_module_t const *module, buffer_handle
 	else if (hnd->flags & private_handle_t::PRIV_FLAGS_USES_ION)
 	{
 #if GRALLOC_ARM_DMA_BUF_MODULE
-		int ret;
 		unsigned char *mappedAddress;
 		size_t size = hnd->size;
 		hw_module_t *pmodule = NULL;
@@ -233,7 +232,7 @@ cleanup:
 	return retval;
 }
 
-static int gralloc_unregister_buffer(gralloc_module_t const *module, buffer_handle_t handle)
+static int gralloc_unregister_buffer(gralloc_module_t const */*module*/, buffer_handle_t handle)
 {
 	if (private_handle_t::validate(handle) < 0)
 	{
@@ -325,7 +324,7 @@ static int gralloc_unregister_buffer(gralloc_module_t const *module, buffer_hand
 	return 0;
 }
 
-static int gralloc_lock(gralloc_module_t const *module, buffer_handle_t handle, int usage, int l, int t, int w, int h, void **vaddr)
+static int gralloc_lock(gralloc_module_t const */*module*/, buffer_handle_t handle, int usage, int /*l*/, int /*t*/, int /*w*/, int /*h*/, void **vaddr)
 {
 	if (private_handle_t::validate(handle) < 0)
 	{
@@ -364,9 +363,9 @@ static int gralloc_lock(gralloc_module_t const *module, buffer_handle_t handle, 
 
 
 
-static int gralloc_lock_ycbcr(struct gralloc_module_t const* module,
-            buffer_handle_t handle, int usage,
-            int l, int t, int w, int h,
+static int gralloc_lock_ycbcr(struct gralloc_module_t const* /*module*/,
+            buffer_handle_t handle, int /*usage*/,
+            int /*l*/, int /*t*/, int /*w*/, int /*h*/,
             struct android_ycbcr *ycbcr)
 {
     if (private_handle_t::validate(handle) < 0)
@@ -410,7 +409,7 @@ static int gralloc_lock_ycbcr(struct gralloc_module_t const* module,
 
 
 
-static int gralloc_unlock(gralloc_module_t const* module, buffer_handle_t handle)
+static int gralloc_unlock(gralloc_module_t const* /*module*/, buffer_handle_t handle)
 {
 	if (private_handle_t::validate(handle) < 0)
 	{
@@ -419,9 +418,6 @@ static int gralloc_unlock(gralloc_module_t const* module, buffer_handle_t handle
 	}
 
 	private_handle_t *hnd = (private_handle_t *)handle;
-	int32_t current_value;
-	int32_t new_value;
-	int retry;
 
 	if (hnd->flags & private_handle_t::PRIV_FLAGS_USES_UMP && hnd->writeOwner)
 	{
@@ -452,7 +448,7 @@ static int gralloc_unlock(gralloc_module_t const* module, buffer_handle_t handle
 	return 0;
 }
 
-int gralloc_perform(struct gralloc_module_t const* module,
+int gralloc_perform(struct gralloc_module_t const* /*module*/,
 		int operation, ... )
 {
 	int res = -EINVAL;
@@ -580,8 +576,7 @@ int gralloc_perform(struct gralloc_module_t const* module,
 
 static struct hw_module_methods_t gralloc_module_methods =
 {
-open:
-	gralloc_device_open
+	.open = gralloc_device_open
 };
 
 private_module_t::private_module_t()

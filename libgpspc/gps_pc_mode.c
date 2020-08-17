@@ -65,9 +65,7 @@ static int eut_gps_state;
 static int gps_search_state;
 static char pc_mode = 0;
 static int set_mode = 0;
-static char buf[512];
 static sem_t sem_a;
-static pthread_mutex_t mutex_a = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutex_b = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutex_tsx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mutex_cwcn = PTHREAD_MUTEX_INITIALIZER;
@@ -124,7 +122,6 @@ Fail:
 
 static double str2float( const char*  p, const char*  end )
 {
-    int   result = 0;
     int   len    = end - p;
     char  temp[16];
 
@@ -179,7 +176,6 @@ Fail:
 static int nmea_tokenizer_init( NmeaTokenizer*  t, const char*  p, const char*  end )
 {
     int    count = 0;
-    char*  q;
 
     // the initial '$' is optional
     if (p < end && p[0] == '$')
@@ -339,6 +335,7 @@ static void location_callback(GpsLocation* location)
 
 static void status_callback(GpsStatus* status)
 {
+	(void) status;
 	D("%s called\n",__FUNCTION__);
 }
 
@@ -359,7 +356,7 @@ void set_report_ptr(report_ptr func)
 
 static void nmea_callback(GpsUtcTime timestamp, const char* nmea, int length)
 {
-	int ret = 0;
+	(void) timestamp;
 	if(first_open == 0)
 	{
 		E("not init,callback fail");
@@ -395,11 +392,13 @@ static void request_utc_time_callback()
 #ifdef GNSS_ANDROIDN
 static void gnss_set_system_info_test(const GnssSystemInfo* info)
 {
+    (void) info;
     D("%s called\n",__FUNCTION__);
 }
 
 static void gnss_sv_status_callback_test(GnssSvStatus* sv_info)
 {
+    (void) sv_info;
     D("%s called\n",__FUNCTION__);
 }
 #endif
@@ -407,6 +406,7 @@ static void gnss_sv_status_callback_test(GnssSvStatus* sv_info)
 
 static pthread_t create_thread_callback(const char* name, void (*start)(void *), void* arg)
 {
+	(void) name;
 	pthread_t pid;
 	D("%s called\n",__FUNCTION__); 
 	pthread_create(&pid, NULL,(void *)start, arg);
@@ -455,6 +455,8 @@ int config_register(int data,char *rsp)
 {
 	unsigned int value = 0;
 	unsigned int addr = 0x00F4;
+
+	(void) data;
 
 	if((gps_search_state == 0) && (eut_gps_state == 0))
 	{
@@ -639,6 +641,8 @@ int get_nmea_data(char *nbuff)
 		memcpy(nbuff,buf,len);
 	}
 	pthread_mutex_unlock(&mutex_a);
+#else
+	(void) nbuff;
 #endif
 	return len;
 }
@@ -646,12 +650,16 @@ int get_nmea_data(char *nbuff)
 
 void astatus_cb(AGpsStatus* status)
 {
+    (void) status;
      D("astatus  enter");
     return;
 }
 
 pthread_t acreate_thread_cb(const char* name, void (*start)(void *), void* arg)
 {
+    (void) name;
+    (void) start;
+    (void) arg;
     pthread_t apid = 0;
     return apid;
 }
@@ -668,8 +676,6 @@ int get_init_mode(void)
 		void *handle;
 		GpsInterface* (*get_interface)(struct gps_device_t* dev);
 		void* (*get_extension)(const char* name);
-		char *error;
-		int i = 0;
 
 		D("begin gps init\n");
 		if(access("/system/etc/GPSenseEngine.xml",0) == -1)
@@ -742,6 +748,7 @@ int get_stop_mode(void)
 int eut_parse(int data,int sub_data, char *rsp)
 {
 	eutmode = 1;
+	(void) sub_data;
 
 	if((data == 1)||(data == 2)||(data == 3)||(data == 4))
 	{	
@@ -793,12 +800,16 @@ int eut_parse(int data,int sub_data, char *rsp)
 
 int eut_eq_parse(int data,int sub_data,char *rsp)
 {
+	(void) sub_data;
+	(void) data;
 	sprintf(rsp,"%s%d",EUT_GPS_REQ,eut_gps_state);
 	return 0;
 }
 
 int search_eq_parse(int data,int sub_data,char *rsp)
 {
+	(void) data;
+	(void) sub_data;
 	sprintf(rsp,"%s%d",EUT_GPS_SEARCH_REQ,gps_search_state);
 	return 0;
 }
@@ -830,6 +841,8 @@ int get_prn_list(char *rsp)
 
 int prnstate_parse(int data,int sub_data,char *rsp)
 {
+	(void) data;
+	(void) sub_data;
 	if((gps_search_state == 0) && (eut_gps_state == 0))
 	{
 		sprintf(rsp,"%s%d",EUT_GPS_ERROR,EUT_GPSERR_PRNSEARCH);
@@ -846,6 +859,8 @@ int prnstate_parse(int data,int sub_data,char *rsp)
 int snr_parse(int data,int sub_data,char *rsp)
 {
 	int max_id = 0,i = 0;
+	(void) data;
+	(void) sub_data;
 	D("snr parse enter");
 	if((gps_search_state == 0) && (eut_gps_state == 0))
 	{
@@ -878,6 +893,8 @@ int snr_parse(int data,int sub_data,char *rsp)
 int prn_parse(int data,int sub_data,char *rsp)
 {
 	int i = 0,found = 0;
+
+	(void) sub_data;
 	if((gps_search_state == 0) && (eut_gps_state == 0))
 	{
 		sprintf(rsp,"%s%d",EUT_GPS_ERROR,EUT_GPSERR_PRNSEARCH);
@@ -906,7 +923,9 @@ int prn_parse(int data,int sub_data,char *rsp)
 
 int fix_parse(int data,int sub_data,char *rsp)
 {
-	int i = 0,found = 0;
+	(void) data;
+	(void) sub_data;
+
 	if((gps_search_state == 0) && (eut_gps_state == 0))
 	{
 		sprintf(rsp,"%s%d",EUT_GPS_ERROR,EUT_GPSERR_PRNSEARCH);
@@ -928,6 +947,8 @@ int fix_parse(int data,int sub_data,char *rsp)
 
 int cwcn_parse(int data,int sub_data,char *rsp)
 {	
+	(void) data;
+	(void) sub_data;
 	D("cwcn_parse  enter");
 	if((gps_search_state == 0) && (eut_gps_state == 0))
 	{
@@ -956,9 +977,10 @@ int cwcn_parse(int data,int sub_data,char *rsp)
 
 int tsx_temp_parse(int data,int sub_data,char *rsp)
 {	
-	int i=0;
 	double tsx_temp = 0.0;
 
+	(void) sub_data;
+	(void) data;
 	D("tsx_temp_parse  enter");
 	if((gps_search_state == 0) && (eut_gps_state == 0))
 	{
@@ -994,6 +1016,8 @@ int tsx_temp_parse(int data,int sub_data,char *rsp)
 
 int tcxo_stability_parse(int data,int sub_data,char *rsp)
 {	
+	(void) data;
+	(void) sub_data;
 	D("tcxo_stability_parse  enter");
 	if((gps_search_state == 0) && (eut_gps_state == 0))
 	{
@@ -1012,6 +1036,7 @@ int tcxo_stability_parse(int data,int sub_data,char *rsp)
 
 int eut_read_register(int addr, int sub_data, char *rsp)
 {	
+	(void) sub_data;
 	D("eut_read_register  enter");	
 	unsigned int value = 0;
 	
@@ -1110,11 +1135,10 @@ int get_cmd_index(char *buf)
 
 int get_sub_str(char *buf, char **revdata, char a, char *delim, unsigned char count, unsigned char substr_max_len)
 {
-    int len, len1, len2;
+    int len;
     char *start = NULL;
     char *substr = NULL;
     char *end = buf;
-    int str_len = strlen(buf);
 
     start = strchr(buf, a);
     substr = strstr(buf, delim);
@@ -1159,11 +1183,10 @@ int get_sub_str(char *buf, char **revdata, char a, char *delim, unsigned char co
 
 int get_sub_str_colon(char *buf, char **revdata, char a, char *delim, unsigned char count, unsigned char substr_max_len)
 {
-    int len, len1, len2;
+    int len;
     char *start = NULL;
     char *substr = NULL;
     char *end = buf;
-    int str_len = strlen(buf);
 
     start = strchr(buf, a);
     substr = strstr(buf, delim);

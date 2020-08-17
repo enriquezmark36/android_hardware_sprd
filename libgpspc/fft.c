@@ -323,7 +323,7 @@ void cw_data_capture(const char* nmea, int length)
 		if(lineCount % 5 != 0)
 		{
 			dataCount++;
-			sscanf(nmea, "%s%s%s%s", &byte1, &byte2, &byte3, &byte4);
+			sscanf(nmea, "%s%s%s%s", byte1, byte2, byte3, byte4);
 
 			data1 = strtol(byte1, 0, 16);
 			data2 = strtol(byte2, 0, 16);

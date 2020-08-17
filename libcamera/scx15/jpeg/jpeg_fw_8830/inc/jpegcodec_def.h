@@ -69,10 +69,10 @@
 		__FILE__,__LINE__,(#expr));  \
 		}
 #else//define ARM
-#define JPEG_PRINTF //NULL
-#define JPEG_TRACE
-#define JPEG_ERROR
-#define JPEG_ASSERT
+#define JPEG_PRINTF(...) //NULL
+#define JPEG_TRACE(...)
+#define JPEG_ERROR(...)
+#define JPEG_ASSERT(...)
 #endif//
 
 typedef enum {ALONE_MODE = 0, SWITCH_MODE}WORK_MODE_E;

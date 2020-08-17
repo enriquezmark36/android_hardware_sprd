@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include <stdlib.h>
+#include <strings.h>
 #include "cmr_common.h"
 #include "cmr_msg.h"
 

@@ -152,10 +152,11 @@ extern int camera_get_is_noscale(void);
 static uint32_t get_jpeg_size(uint32_t width, uint32_t height, uint32_t thum_width, uint32_t thum_height);
 static uint32_t get_thum_yuv_size(uint32_t width, uint32_t height, uint32_t thum_width, uint32_t thum_height);
 static uint32_t get_thum_jpeg_size(uint32_t width, uint32_t height, uint32_t thum_width, uint32_t thum_height);
+#if 0
 static uint32_t get_jpg_tmp_size(uint32_t width, uint32_t height, uint32_t thum_width, uint32_t thum_height);
 static uint32_t get_scaler_tmp_size(uint32_t width, uint32_t height, uint32_t thum_width, uint32_t thum_height);
 static uint32_t get_isp_tmp_size(uint32_t width, uint32_t height, uint32_t thum_width, uint32_t thum_height);
-
+#endif
 static int arrange_raw_buf(struct cmr_cap_2_frm *cap_2_frm,
 					struct img_size *sn_size,
 					struct img_rect *sn_trim,
@@ -1170,7 +1171,7 @@ uint32_t get_thum_jpeg_size(uint32_t width, uint32_t height, uint32_t thum_width
 	size = CMR_JPEG_SZIE(thum_width, thum_height);
 	return ADDR_BY_WORD(size);
 }
-
+#if 0
 uint32_t get_jpg_tmp_size(uint32_t width, uint32_t height, uint32_t thum_width, uint32_t thum_height)
 {
 	(void)thum_width; (void)thum_height;
@@ -1197,3 +1198,4 @@ uint32_t get_isp_tmp_size(uint32_t width, uint32_t height, uint32_t thum_width, 
 
 	return slice_buffer;
 }
+#endif

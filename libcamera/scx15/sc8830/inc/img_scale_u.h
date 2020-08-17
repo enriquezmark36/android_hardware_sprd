@@ -24,7 +24,7 @@ extern "C"
 #include <linux/types.h>
 #include <asm/ioctl.h>
 
-#include <video/sprd_scale_k.h>
+#include <sprd_scale_k.h>
 
 enum scale_cfg_id {
 	SCALE_INPUT_SIZE = 0,

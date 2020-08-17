@@ -27,7 +27,7 @@
 #include <sys/types.h>
 #include "sensor_raw.h"
 
-#include <video/sensor_drv_k.h>
+#include <sensor_drv_k.h>
 
 #ifdef	 __cplusplus
 extern	 "C"

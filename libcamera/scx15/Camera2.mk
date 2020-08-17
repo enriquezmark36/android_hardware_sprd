@@ -27,8 +27,9 @@ LOCAL_C_INCLUDES := \
         external/jhead \
         external/sqlite/dist \
 	system/media/camera/include \
-	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include \
-	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/source/include \
+	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/source/include/video
+
+LOCAL_HEADER_LIBRARIES := generated_kernel_headers
 
 # Again, kanas/kanas3g uses the scx15 despite being tagged as sc8830
 ifeq ($(strip $(SOC_SCX35)),true)
@@ -38,9 +39,6 @@ else
 LOCAL_C_INCLUDES += \
 	hardware/sprd/gralloc/$(TARGET_BOARD_PLATFORM)
 endif
-
-LOCAL_ADDITIONAL_DEPENDENCIES += \
-	$(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr \
 
 LOCAL_SRC_FILES:= \
 	sc8830/src/SprdOEMCamera.c \
@@ -62,8 +60,11 @@ LOCAL_SRC_FILES:= \
 	sensor_drv_u/src/sensor_drv_u.c \
 	sensor/sensor_autotest_ccir_yuv.c \
 	sensor/sensor_hi702_ccir.c \
-	sensor/sensor_pattern.c \
-	sensor/sensor_sr352.c \
+
+# Sorry, but I will not maintain this driver, currently a nightmare in -Werror
+# LOCAL_SRC_FILES += sensor/sensor_sr352.c
+
+LOCAL_SRC_FILES += \
 	sensor/sensor_s5k4ecgx_mipi.c \
 	vsp/sc8830/src/jpg_drv_sc8830.c \
 	jpeg/jpeg_fw_8830/src/jpegcodec_bufmgr.c \
@@ -108,6 +109,9 @@ endif
 LOCAL_MODULE_RELATIVE_PATH := hw
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_CFLAGS := -fno-strict-aliasing -D_VSP_ -DJPEG_ENC -D_VSP_LINUX_ -DCHIP_ENDIAN_LITTLE -DCONFIG_CAMERA_2M  -DANDROID_4100
+
+# TODO: Fix or clean these warnings when free
+LOCAL_CFLAGS += -Wno-error=unused-variable -Wno-error=unused-parameter
 
 ifeq ($(strip $(TARGET_BOARD_PLATFORM)),scx15)
 LOCAL_CFLAGS += -DCONFIG_CAMERA_SMALL_PREVSIZE
@@ -255,7 +259,8 @@ endif
 LOCAL_MODULE_TAGS := optional
 
 ifeq ($(strip $(sc8830like)),1)
-LOCAL_SHARED_LIBRARIES := libexif libutils libbinder libcamera_client libskia libcutils libsqlite libhardware libmorpho_easy_hdr libcamera_metadata libmemoryheapion
+LOCAL_STATIC_LIBRARIES := libskia
+LOCAL_SHARED_LIBRARIES := libexif libutils libbinder libcamera_client libcutils libsqlite libhardware libmorpho_easy_hdr libcamera_metadata libmemoryheapion
 LOCAL_SHARED_LIBRARIES += \
 	libnativewindow \
 	libgui \

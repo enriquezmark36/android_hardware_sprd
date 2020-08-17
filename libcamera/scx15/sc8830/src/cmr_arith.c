@@ -533,6 +533,7 @@ int arithmetic_hdr_deinit(void)
 	CMR_LOGD("e.");
 	return ret;
 }
+#if 0
 static void save_input_data(uint32_t width,uint32_t height)
 {
 	FILE *fp = NULL;
@@ -573,7 +574,7 @@ static void save_hdrdata(void *addr,uint32_t width,uint32_t height)
 		CMR_LOGE("can not create savedata");
 	}
 }
-
+#endif
 int arithmetic_hdr(struct img_addr *dst_addr,uint32_t width,uint32_t height)
 {
 	int           ret = ARITH_SUCCESS;

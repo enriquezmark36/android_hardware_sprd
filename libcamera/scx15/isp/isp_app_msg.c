@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 #include <stdlib.h>
+#include <string.h>
 #include "isp_app_msg.h"
 #include <sys/types.h>
-
+#include <strings.h>
 #define ISP_APP_MSG_CHECK_MSG_MAGIC(handle) \
 		do { \
 			if (((struct isp_app_msg_cxt*)handle)->msg_magic != ISP_APP_MSG_MAGIC_CODE) { \

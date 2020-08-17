@@ -349,10 +349,10 @@ private:
 	};
 
 	class Stream : virtual public RefBase {
-		SprdCameraHWInterface2  *mHardware;
+// 		SprdCameraHWInterface2  *mHardware;
 		public:
 			Stream(SprdCameraHWInterface2 *hw, uint8_t new_index):
-			mHardware(hw),
+// 			mHardware(hw),
 			m_index(new_index),
 			m_numRegisteredStream(1),
 			m_IsRecevStopMsg(false),

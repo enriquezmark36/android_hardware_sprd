@@ -1437,7 +1437,7 @@ static int lookup(const struct str_map *const arr, const char *name, int def)
 
 	return SprdCameraParameters::kInvalidValue == ret ? def : ret;
 }
-
+#if 0
 static void discard_zone_weight(int *arr, uint32_t size)
 {
 	uint32_t i = 0;
@@ -1456,7 +1456,7 @@ static void discard_zone_weight(int *arr, uint32_t size)
 		LOGI("discard_zone_weight: %d:%d,%d,%d,%d.\n",i,arr[i*4],arr[i*4+1],arr[i*4+2],arr[i*4+3]);
 	}
 }
-
+#endif
 static void coordinate_struct_convert(int *rect_arr,int arr_size)
 {
 	int i =0;

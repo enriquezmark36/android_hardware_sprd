@@ -98,6 +98,10 @@ LOCAL SENSOR_IOCTL_FUNC_TAB_T s_autotst_ioctl_func_tab =
     PNULL,
     PNULL,
     PNULL,
+    PNULL,
+    PNULL,
+    PNULL,
+    PNULL,
 };
 
 SENSOR_INFO_T g_autotest_yuv_info =

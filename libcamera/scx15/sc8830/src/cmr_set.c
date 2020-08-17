@@ -37,7 +37,6 @@ static int camera_set_effect(uint32_t effect, uint32_t *skip_mode, uint32_t *ski
 static int camera_set_ev(uint32_t expo_compen, uint32_t *skip_mode, uint32_t *skip_num);
 static int camera_set_wb(uint32_t wb_mode, uint32_t *skip_mode, uint32_t *skip_num);
 static int camera_set_scene(uint32_t scene_mode, uint32_t *skip_mode, uint32_t *skip_num);
-static int camera_set_night(uint32_t night_mode, uint32_t *skip_mode, uint32_t *skip_num);
 static int camera_set_flicker(uint32_t flicker_mode, uint32_t *skip_mode, uint32_t *skip_num);
 static int camera_set_iso(uint32_t iso, uint32_t *skip_mode, uint32_t *skip_num);
 static int camera_set_flash(uint32_t flash_mode, uint32_t *skip_mode, uint32_t *skip_num);
@@ -494,14 +493,6 @@ int camera_set_scene(uint32_t scene_mode, uint32_t *skip_mode, uint32_t *skip_nu
 		ret = Sensor_Ioctl(SENSOR_IOCTL_PREVIEWMODE, scene_mode);
 	}
 	Sensor_SetSensorExifInfo(SENSOR_EXIF_CTRL_SCENECAPTURETYPE,scene_mode);
-
-	return ret;
-}
-
-int camera_set_night(uint32_t night_mode, uint32_t *skip_mode, uint32_t *skip_num)
-{
-	/*struct camera_context    *cxt = camera_get_cxt();*/
-	int                      ret = CAMERA_SUCCESS;
 
 	return ret;
 }
@@ -1563,7 +1554,6 @@ int camera_caf_preflash(void)
 		camera_set_flashdevice((uint32_t)FLASH_CLOSE_AFTER_AUTOFOCUS);
 	}
 
-exit:
 	return ret;
 }
 

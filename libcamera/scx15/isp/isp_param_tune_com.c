@@ -22,6 +22,7 @@
 #include "isp_param_size.h"
 #include "isp_app.h"
 #include "cmr_set.h"
+#include <stdlib.h>
 /**---------------------------------------------------------------------------*
  **				Compiler Flag					*
  **---------------------------------------------------------------------------*/
@@ -78,7 +79,7 @@ static int32_t _ispParamVerify(void* in_param_ptr)
 
 	return rtn;
 }
-
+#if 0
 static uint32_t _ispParserGetType(void* in_param_ptr)
 {
 	uint32_t* param_ptr=(uint32_t*)in_param_ptr;
@@ -86,7 +87,7 @@ static uint32_t _ispParserGetType(void* in_param_ptr)
 
 	return type;
 }
-
+#endif
 static int32_t _ispParserDownParam(void* in_param_ptr)
 {
 	uint32_t rtn=0x00;

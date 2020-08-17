@@ -18,6 +18,7 @@
 #include <utils/Log.h>
 #include <fcntl.h>              /* low-level i/o */
 #include <errno.h>
+#include <stdlib.h>
 #include <sys/ioctl.h>
 
 #include "sensor_cfg.h"
@@ -252,7 +253,7 @@ LOCAL int _Sensor_Device_SetVoltageIOVDD(uint32_t vdd_value)
 
 	return ret;
 }
-
+#if 0
 LOCAL int _Sensor_Device_read(uint8_t *buff, uint32_t size)
 {
 	int ret = SENSOR_SUCCESS;
@@ -262,7 +263,7 @@ LOCAL int _Sensor_Device_read(uint8_t *buff, uint32_t size)
 
 	return ret;
 }
-
+#endif
 LOCAL int _Sensor_Device_Write(uint8_t *buff, uint32_t size)
 {
 	int ret = SENSOR_SUCCESS;

@@ -16,6 +16,7 @@
 
 #define LOG_TAG __FILE__
 
+#include <string.h>
 #include <utils/Log.h>
 #include "sensor.h"
 #include "jpeg_exif_header.h"

@@ -3,11 +3,12 @@
 #include "jpegcodec_bufmgr.h"
 #include "jpegenc_api.h"
 #include <sys/ioctl.h>
+#include <string.h>
 #include <errno.h>
 #include <sys/mman.h>
 #include <fcntl.h>
 
-#include <video/sprd_scale.h>
+#include <sprd_scale.h>
 
 #ifdef   __cplusplus
     extern   "C" 
@@ -15,7 +16,7 @@
 #endif
 		
 #if defined(JPEG_ENC)
-#include <video/sprd_jpg.h>
+#include <sprd_jpg.h>
 
 #define SPRD_JPG_DRIVER "/dev/sprd_jpg"
 
@@ -118,6 +119,7 @@ LOCAL void JPEGENC_init_fw_param(JPEGENC_PARAMS_T *jpegenc_params,
 					enc_fw_info_ptr->height);
 }
 
+#if 0
 LOCAL int xioctl(int fd, int request, void * arg)
 {
     int r;
@@ -244,7 +246,6 @@ LOCAL JPEG_RET_E JPEGENC_Scale_For_Thumbnail(SCALE_PARAM_T *scale_param)
 
 	return JPEG_SUCCESS;
 }
-
 LOCAL JPEG_RET_E JPEGENC_start_encode_thumbnail(JPEGENC_PARAMS_T *jpegenc_params)
 {
 	JPEG_RET_E ret_value = JPEG_FAILED;
@@ -347,6 +348,7 @@ LOCAL JPEG_RET_E JPEGENC_start_encode_thumbnail(JPEGENC_PARAMS_T *jpegenc_params
 #endif
 	return ret_value;
 }
+#endif
 LOCAL JPEG_RET_E JPEGENC_start_encode(JPEGENC_PARAMS_T *jpegenc_params)
 {
 	JPEG_RET_E 				ret_value = JPEG_FAILED;

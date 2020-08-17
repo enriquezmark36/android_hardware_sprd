@@ -22,7 +22,7 @@
 #include <semaphore.h>
 #include <sys/types.h>
 
-#include <video/sprd_dma_copy_k.h>
+#include <sprd_dma_copy_k.h>
 
 #include <utils/threads.h>
 #include <utils/RefBase.h>

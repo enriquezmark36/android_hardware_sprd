@@ -15,7 +15,8 @@
  */
 #include "isp_calibration.h"
 #include "sensor_raw.h"
-
+#include <string.h>
+#include <stdlib.h>
 //#define CLIP(x, bottom, top) ((x)<bottom ? bottom : (x) > top ? top : (x))
 
 int32_t CLIP(int32_t x, int32_t bottom, int32_t top)

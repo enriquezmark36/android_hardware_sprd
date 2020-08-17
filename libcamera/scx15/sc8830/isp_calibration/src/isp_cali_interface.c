@@ -15,6 +15,8 @@
  */
 #include "isp_cali_interface.h"
 #include "sensor_drv_u.h"
+#include <string.h>
+#include <stdlib.h>
 
 static char s_calibration_awb_file[] = "/data/sensor_%s_awb_%s.dat";
 static char s_calibration_flashlight_file[] = "/data/sensor_%s_flashlight_%s.dat";

@@ -21,7 +21,7 @@ extern "C"
 {
 #endif
 
-#include <video/sprd_dma_copy_k.h>
+#include <sprd_dma_copy_k.h>
 
 #include "cmr_common.h"
 

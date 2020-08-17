@@ -13,6 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <stdlib.h>
+#include <string.h>
 #include "exif_writer.h"
 #include "cmr_msg.h"
 #include "jpeg_codec.h"
@@ -136,7 +138,7 @@ static JPEG_ENC_CB_PARAM_T s_thumbnail;
 static void* _thread_proc(void* data);
 static int _kill_thread(void);
 static int _dec_next(uint32_t handle, struct jpeg_dec_next_param *param_ptr);
-
+#if 0
 static void savedata(uint32_t buf_addr, uint32_t size)
 {
 	FILE *fp = NULL;
@@ -193,7 +195,7 @@ static uint32_t _format_covert(uint32_t format)
 
 	return jfmt;
 }
-
+#endif
 static uint32_t _quality_covert(uint32_t quality)
 {
 	uint32_t jq = JPEGENC_QUALITY_HIGH;

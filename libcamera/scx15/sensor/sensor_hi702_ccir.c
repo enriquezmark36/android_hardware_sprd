@@ -58,7 +58,12 @@ LOCAL uint32_t HI702_BeforeSnapshot(uint32_t param);
 
 // Additional functions
 LOCAL uint32_t __HI702_WriteGroupRegs(SENSOR_REG_T* sensor_reg_ptr, char *name, int size);
-LOCAL uint32_t _HI702_WriteGroupRegs(SENSOR_REG_T* sensor_reg_ptr, char *name);
+#define HI702_WriteGroupRegs(x) \
+do { \
+	__HI702_WriteGroupRegs(x, #x, (sizeof(x)/sizeof(x[0]))-1); \
+} while (0)
+// __HI702_WriteGroupRegs that counts arrays ending with {0xFFFF,0xFFFF}
+// LOCAL uint32_t _HI702_WriteGroupRegs(SENSOR_REG_T* sensor_reg_ptr, char *name);
 
 /**---------------------------------------------------------------------------*
  ** 						Local Variables 								 *
@@ -782,7 +787,7 @@ LOCAL uint32_t __HI702_WriteGroupRegs(SENSOR_REG_T* sensor_reg_ptr, char *name, 
 	return 0;
 
 }
-
+#if 0
 LOCAL uint32_t _HI702_WriteGroupRegs(SENSOR_REG_T* sensor_reg_ptr, char *name)
 {
 	int i = 0;
@@ -791,12 +796,7 @@ LOCAL uint32_t _HI702_WriteGroupRegs(SENSOR_REG_T* sensor_reg_ptr, char *name)
 
 	return __HI702_WriteGroupRegs(sensor_reg_ptr,name, i);
 }
-
-#define HI702_WriteGroupRegs(x) \
-do { \
-	__HI702_WriteGroupRegs(x, #x, (sizeof(x)/sizeof(x[0]))-1); \
-} while (0)
-
+#endif
 
 LOCAL uint32_t _hi702_PowerOn(uint32_t power_on)
 {

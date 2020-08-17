@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 #include <stdlib.h>
+#include <string.h>
 #include "sci_types.h"
 #include "jpeg_jfif.h"
 #include "jpeg_exif_type.h"
 #include "exif_writer.h"
 #include "jpeg_stream.h"
 #include "sc8830_video_header.h"
-
 #define DEBUG_STR     "%s(L %d), %s: "
 #define DEBUG_ARGS    __FILE__,__LINE__,__FUNCTION__
 
@@ -2640,7 +2640,7 @@ LOCAL JPEG_RET_E Jpeg_WriteIFH(JPEG_WRITE_STREAM_CONTEXT_T *context_ptr,
 
     return JPEG_SUCCESS;
 }
-
+#if 0
 /*****************************************************************************
 **	Name :
 **	Description:	write the SOI marker
@@ -2663,7 +2663,7 @@ LOCAL JPEG_RET_E Jpeg_WriteSOIMarker(JPEG_WRITE_STREAM_CONTEXT_T *context_ptr,
 
     return JPEG_SUCCESS;
 }
-
+#endif
 /*****************************************************************************
 **	Name :
 **	Description:	write the the APP1 marker

@@ -3209,7 +3209,7 @@ void SprdCameraHWInterface2::Camera2ProcessReq( camera_req_info *srcreq)
 			return;
 		}
 	}
-	out:
+
 	if (IsSetPara){
 		m_RequestQueueThread->SetSignal(SIGNAL_REQ_THREAD_REQ_DONE);
 	}
@@ -5132,7 +5132,7 @@ static int HAL2_getCameraInfo(int cameraId, struct camera_info *info)//malloc ca
     return NO_ERROR;
 }
 
-#define SET_METHOD(m) m : HAL2_device_##m
+#define SET_METHOD(m) .m = HAL2_device_##m
 
 static camera2_device_ops_t camera2_device_ops = {
         SET_METHOD(set_request_queue_src_ops),
@@ -5219,30 +5219,30 @@ done:
 
 
 static hw_module_methods_t camera_module_methods = {
-            open : HAL2_camera_device_open
+    .open = HAL2_camera_device_open
 };
 
 extern "C" {
 	struct camera_module HAL_MODULE_INFO_SYM = {
-		common : {
-			tag                : HARDWARE_MODULE_TAG,
-			module_api_version : CAMERA_MODULE_API_VERSION_2_0,
-			hal_api_version    : HARDWARE_HAL_API_VERSION,
-			id                 : CAMERA_HARDWARE_MODULE_ID,
-			name               : "SSPRD Camera HAL2",
-			author             : "Spreadtrum Corporation",
-			methods            : &camera_module_methods,
-			dso                : NULL,
-			reserved : { 0 }
+		.common = {
+			.tag                = HARDWARE_MODULE_TAG,
+			.module_api_version = CAMERA_MODULE_API_VERSION_2_0,
+			.hal_api_version    = HARDWARE_HAL_API_VERSION,
+			.id                 = CAMERA_HARDWARE_MODULE_ID,
+			.name               = "SSPRD Camera HAL2",
+			.author             = "Spreadtrum Corporation",
+			.methods            = &camera_module_methods,
+			.dso                = NULL,
+			.reserved = { 0 }
 		},
-		get_number_of_cameras : HAL2_getNumberOfCameras,
-		get_camera_info       : HAL2_getCameraInfo,
-		set_callbacks         : NULL,
-		get_vendor_tag_ops    : NULL,
-		open_legacy           : NULL,
-		set_torch_mode        : NULL,
-		init                  : NULL,
-		reserved              : { NULL, NULL, NULL, NULL, NULL }
+		.get_number_of_cameras = HAL2_getNumberOfCameras,
+		.get_camera_info       = HAL2_getCameraInfo,
+		.set_callbacks         = NULL,
+		.get_vendor_tag_ops    = NULL,
+		.open_legacy           = NULL,
+		.set_torch_mode        = NULL,
+		.init                  = NULL,
+		.reserved              = { NULL, NULL, NULL, NULL, NULL }
 	};
 }
 

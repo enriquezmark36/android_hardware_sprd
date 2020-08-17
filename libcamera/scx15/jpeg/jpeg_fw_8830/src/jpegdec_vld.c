@@ -15,7 +15,7 @@
 **                        Dependencies                                        *
 **---------------------------------------------------------------------------*/
 #include "sc8830_video_header.h"
-
+#include <string.h>
 #if !defined(_SIMULATION_)
 //#include "os_api.h"
 #endif

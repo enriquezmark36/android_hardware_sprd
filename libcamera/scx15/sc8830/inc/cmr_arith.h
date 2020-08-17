@@ -33,10 +33,10 @@ int arithmetic_hdr_deinit(void);
 int arithmetic_hdr(struct img_addr *dst_addr,uint32_t width,uint32_t height);
 void arithmetic_hdr_data(struct img_addr *addr,uint32_t y_size,uint32_t uv_size,uint32_t cap_cnt);
 int arithmetic_mem_handle(uint32_t mem_size);
-inline uint32_t arithmetic_fd_is_init(void);
-inline uint32_t arithmetic_get_fd_num(void);
-inline uint32_t arithmetic_fd_is_eb(void);
-inline void arithmetic_set_fd_eb(uint32_t param);
+uint32_t arithmetic_fd_is_init(void);
+uint32_t arithmetic_get_fd_num(void);
+uint32_t arithmetic_fd_is_eb(void);
+void arithmetic_set_fd_eb(uint32_t param);
 
 #ifdef __cplusplus
 }

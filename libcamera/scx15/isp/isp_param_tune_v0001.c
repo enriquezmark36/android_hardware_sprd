@@ -21,7 +21,7 @@
 #include "isp_app.h"
 #include "cmr_common.h"
 #include "sensor_raw.h"
-
+#include <string.h>
 /**---------------------------------------------------------------------------*
 **			Compiler Flag						*
 **---------------------------------------------------------------------------*/
@@ -38,6 +38,7 @@ extern   "C"
 /**---------------------------------------------------------------------------*
 **			Data Prototype						**
 **----------------------------------------------------------------------------*/
+#if 0
 static int32_t _ispParamIDCheck(char* str1, char* str2)
 {
 	int32_t rtn = ISP_SUCCESS;
@@ -46,7 +47,7 @@ static int32_t _ispParamIDCheck(char* str1, char* str2)
 
 	return rtn;
 }
-
+#endif
 static int32_t _ispSetAllParamV0001(void* in_param_ptr)
 {
 	int32_t rtn=0x00;

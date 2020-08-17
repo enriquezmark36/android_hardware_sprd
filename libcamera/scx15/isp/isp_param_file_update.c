@@ -200,7 +200,7 @@ uint32_t isp_raw_para_update_from_file(SENSOR_INFO_T *sensor_info_ptr,SENSOR_ID_
 		CMR_LOGE("file first load");
 		raw_info_update_status[sensor_id].tune_info_table_org_addr = (uint8_t*)(*sensor_info_ptr->raw_info_ptr)->tune_ptr;
 		raw_info_update_status[sensor_id].fix_info_table_org_addr = (*sensor_info_ptr->raw_info_ptr)->fix_ptr;
-	}else if(raw_info_update_status[sensor_id].updata_file_time == file_status.st_mtime){
+	}else if(raw_info_update_status[sensor_id].updata_file_time == (unsigned long) file_status.st_mtime){
 		CMR_LOGE("file has been loaded");
 		if(fp){
 			fclose(fp);

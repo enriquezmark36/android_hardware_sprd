@@ -21,7 +21,7 @@
 #include <unistd.h>
 #include <math.h>
 
-#include <video/sprd_rot_k.h>
+#include <sprd_rot_k.h>
 
 #include "SprdOEMCamera.h"
 #include "cmr_oem.h"
@@ -154,7 +154,7 @@ static int camera_get_sensor_capture_mode(struct img_size* target_size, uint32_t
 static int camera_preview_init(int format_mode);
 static void camera_set_client_data(void* user_data);
 static void camera_set_hal_cb(camera_cb_f_type cmr_cb);
-static void camera_set_af_cb(camera_cb_f_type cmr_cb);
+// static void camera_set_af_cb(camera_cb_f_type cmr_cb);
 static void camera_call_af_cb(camera_cb_f_type cmr_cb,
 			camera_cb_type cb,
 			const void *client_data,
@@ -209,7 +209,7 @@ static int camera_convert_to_thumb(void);
 static int camera_isp_proc_handle(struct ips_out_param *isp_out);
 static int camera_af_init(void);
 static int camera_af_deinit(void);
-static int camera_uv422_to_uv420(uint32_t dst, uint32_t src, uint32_t width, uint32_t height);
+// static int camera_uv422_to_uv420(uint32_t dst, uint32_t src, uint32_t width, uint32_t height);
 static int camera_prev_thread_init(void);
 static int camera_prev_thread_deinit(void);
 static void *camera_prev_thread_proc(void *data);
@@ -237,15 +237,15 @@ static int camera_cb_thread_deinit(void);
 static void *camera_cb_thread_proc(void *data);
 static void camera_callback_handle(camera_cb_type cb, camera_func_type func, int32_t cb_param);
 static void camera_capture_step_statisic(void);
-static int camera_capture_init_continue(void);
-static void _camera_autofocus_stop_handle(void);
+// static int camera_capture_init_continue(void);
+// static void _camera_autofocus_stop_handle(void);
 static int camera_take_picture_continue(int cap_cnt);
 static int camera_is_jpeg_encode_direct_process(void);
 static int camera_post_convert_thum_msg(void);
 static int camera_sensor_interface_updated(uint32_t work_mode, struct sensor_if *sn_if);
 static uint32_t camera_get_rot_val(uint32_t rot_enum);
 static uint32_t camera_get_rot_enum(uint32_t rot_val);
-static void camera_buffer_copy(struct img_frm *src_img, struct img_frm *dst_img);
+// static void camera_buffer_copy(struct img_frm *src_img, struct img_frm *dst_img);
 static int camera_capture_way_out(void);
 static uint32_t camera_safe_scale_th(void);
 static int camera_reset_rotation_state(int rot_sate);
@@ -2079,8 +2079,8 @@ int camera_init_internal(uint32_t camera_id)
 		goto exit;
 	}
 
-cap_sub2_deinit:
 	camera_cap_sub2_thread_deinit();
+
 dma_copy_deinit:
 	camera_dma_copy_deinit();
 rot_deinit:
@@ -2771,7 +2771,7 @@ int camera_stop_capture_raw_internal(void)
 
 	return ret;
 }
-
+#if 0
 static void _camera_autofocus_stop_handle(void)
 {
 	int                    status = CAMERA_SUCCESS;
@@ -2784,7 +2784,7 @@ static void _camera_autofocus_stop_handle(void)
 		pthread_mutex_unlock(&g_cxt->af_cb_mutex);
 	}
 }
-
+#endif
 int camera_stop_preview_internal(void)
 {
 	int                  ret = CAMERA_SUCCESS;
@@ -4922,7 +4922,7 @@ void *camera_af_thread_proc(void *data)
 
 	return NULL;
 }
-
+#if 0
 void camera_set_af_cb(camera_cb_f_type cmr_cb)
 {
 	pthread_mutex_lock(&g_cxt->af_cb_mutex);
@@ -4930,6 +4930,7 @@ void camera_set_af_cb(camera_cb_f_type cmr_cb)
 	pthread_mutex_unlock(&g_cxt->af_cb_mutex);
 	return;
 }
+#endif
 void camera_call_af_cb(camera_cb_f_type cmr_cb,
 			camera_cb_type cb,
 			const void *client_data,
@@ -5352,7 +5353,7 @@ int camera_capture_init(void)
 exit:
 	return ret;
 }
-
+#if 0
 int camera_capture_init_continue(void)
 {
 	struct img_size          capture_size;
@@ -5450,7 +5451,7 @@ int camera_capture_init_continue(void)
 exit:
 	return ret;
 }
-
+#endif
 int camera_capture_init_raw(void)
 {
 	struct img_size          capture_size;
@@ -6478,7 +6479,7 @@ uint32_t camera_get_rot_enum(uint32_t rot_val)
 
 	return rot_enum;
 }
-
+#if 0
 void camera_buffer_copy(struct img_frm *src_img,
 		struct img_frm *dst_img)
 {
@@ -6516,7 +6517,7 @@ void camera_buffer_copy(struct img_frm *src_img,
 
 	return;
 }
-
+#endif
 int camera_capture_yuv_process(struct frm_info *data)
 {
 	int                      ret = CAMERA_SUCCESS;
@@ -8073,7 +8074,7 @@ uint32_t camera_get_rot_set(void)
 	CMR_LOGV("rot set %d.",g_cxt->prev_rot);
 	return g_cxt->prev_rot;
 }
-
+#if 0
 int camera_uv422_to_uv420(uint32_t dst, uint32_t src, uint32_t width, uint32_t height)
 {
 	int                      ret = CAMERA_SUCCESS;
@@ -8088,7 +8089,7 @@ int camera_uv422_to_uv420(uint32_t dst, uint32_t src, uint32_t width, uint32_t h
 
 	return ret;
 }
-
+#endif
 int camera_isp_proc_handle(struct ips_out_param *isp_out)
 {
 	struct ipn_in_param        in_param;

@@ -179,7 +179,7 @@ static uint32_t _isp_AppInitContext(void)
 
 	return rtn;
 }
-
+#if 0
 /* _isp_AppDeinitContext --
 *@
 *@
@@ -196,7 +196,7 @@ static int32_t _isp_AppDeinitContext(void)
 
 	return rtn;
 }
-
+#endif
 /* _isp_AppLock --
 *@
 *@
@@ -645,7 +645,7 @@ static int _isp_msg_queue_destroy(uint32_t queue_handle)
 
 	return rtn;
 }
-
+#if 0
 /* _isp_cond_wait --
 *@
 *@
@@ -684,7 +684,7 @@ static int _isp_cond_signal(pthread_cond_t* cond_ptr, pthread_mutex_t* mutex_ptr
 	ISP_APP_RETURN_IF_FAIL(rtn, ("unlock cond mutex %d error", rtn));
 	return rtn;
 }
-
+#endif
 /* _isp_app_msg_get --
 *@
 *@

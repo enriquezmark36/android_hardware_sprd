@@ -21,6 +21,7 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <fcntl.h>
+#include <string.h>
 
 /**---------------------------------------------------------------------------*
 **                        Compiler Flag                                       *
@@ -32,7 +33,7 @@
 		
 //#if defined(JPEG_DEC)
 
-#include <video/sprd_jpg.h>
+#include <sprd_jpg.h>
 
 #define SPRD_JPG_DRIVER "/dev/sprd_jpg"
 
@@ -143,7 +144,7 @@ LOCAL void JPEGDEC_init_fw_param(JPEGDEC_PARAMS_T *jpegdec_params,
 	dec_fw_info_ptr->is_first_slice = TRUE;
 }
 
-
+#if 0
 LOCAL JPEG_RET_E 	JPEG_Mem_Copy(   JPEGDEC_PARAMS_T *jpegdec_params  , int mem_direct  )
 {
 	SCI_TRACE_LOW("enter [JPEG_Mem_Copy]   header_len = %d ,bitstream_len = %d",jpegdec_params->header_len , jpegdec_params->stream_size);
@@ -163,7 +164,7 @@ LOCAL JPEG_RET_E 	JPEG_Mem_Copy(   JPEGDEC_PARAMS_T *jpegdec_params  , int mem_d
 	return 0;
 
 }
-
+#endif
 
 LOCAL JPEG_RET_E JPEGDEC_start_decode(JPEGDEC_PARAMS_T *jpegdec_params)
 {

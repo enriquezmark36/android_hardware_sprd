@@ -23,7 +23,7 @@ extern "C"
 
 #include <sys/types.h>
 
-#include <video/sprd_dma_copy_k.h>
+#include <sprd_dma_copy_k.h>
 
 #include "../../arithmetic/sc8830/inc/FaceSolid.h"
 #ifdef CONFIG_SPRD_HDR_LIB
@@ -554,7 +554,7 @@ int camera_isp_awb_bypass(enum isp_alg_mode awb_mode);
 int camera_isp_ae_bypass(enum isp_alg_mode ae_mode);
 int camera_isp_flash_ratio(SENSOR_FLASH_LEVEL_T *flash_level);
 void camera_isp_ae_stab_set (uint32_t is_ae_stab_eb);
-inline uint32_t camera_get_prev_stat();
+uint32_t camera_get_prev_stat();
 int camera_capture_is_idle(void);
 int camera_set_cancel_capture(int set_val); /*for hal can invoke*/
 void camera_config_exif_info(camera_sensor_exif_info * exif_info);

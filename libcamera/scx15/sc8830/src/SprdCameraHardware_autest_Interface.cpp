@@ -124,7 +124,7 @@ int g_sensor_opened=0;
 #define USE_IOMM_ADD 1
 static int g_mem_method = USE_PHYSICAL_ADD;/*0: physical address, 1: iommu  address*/
 int read_data_from_sensor();
-
+#if 0
 static void auto_test_dcam_usage()
 {
 	INFO("auto_test_dcam_usage:\n");
@@ -135,6 +135,7 @@ static void auto_test_dcam_usage()
 	INFO("-h	: captured picture size height\n");
 	INFO("-help	: show this help message\n");
 }
+#endif
 /*
 * parse paramet for sensor setttings
 * and inital globale  g_auto_test_cmr_cxt_ptr
@@ -168,7 +169,7 @@ static int auto_test_dcam_param_set(int maincmd ,int subcmd,int cameraid,int wid
 	 INFO("debug %s  test =%d LINE=%d  X \n",__func__,test,__LINE__);
 	 return 0;
 }
-
+#if 0
 static void auto_test_dcam_wait_isp_ae_stab(void)
 {
 	struct camera_context *cxt = camera_get_cxt();
@@ -177,7 +178,7 @@ static void auto_test_dcam_wait_isp_ae_stab(void)
 
 	sem_wait(&cxt->cmr_set.isp_ae_stab_sem);
 }
-
+#endif
 static void auto_test_dcam_preview_mem_release(void)
 {
 	uint32_t i =0;
@@ -452,7 +453,7 @@ static int32_t auto_test_dcam_save_raw_data(void)
 	INFO("debug %s %d X ",__func__,__LINE__);
 	return rtn;
 }
-
+#if 0
 static int32_t auto_test_save_raw_data(char* file_name, void* buf, uint32_t len)
 {
 	int32_t rtn = 0;
@@ -470,7 +471,7 @@ static int32_t auto_test_save_raw_data(char* file_name, void* buf, uint32_t len)
 	INFO("debug %s %d X \n",__func__,__LINE__);
 	return rtn;
 }
-
+#endif
 static int32_t auto_test_dcam_save_jpg(int image_type)
 {
 	int32_t rtn = 0;

@@ -152,8 +152,8 @@ LOCAL uint32_t _s5k4ec_set_video_mode(uint32_t mode);
 LOCAL uint32_t _s5k4ec_set_awb(uint32_t mode);
 LOCAL uint32_t _s5k4ec_set_scene_mode(uint32_t mode);
 LOCAL uint32_t _s5k4ec_BeforeSnapshot(uint32_t param);
-LOCAL uint32_t _s5k4ec_check_image_format_support(uint32_t param);
-LOCAL uint32_t _s5k4ec_pick_out_jpeg_stream(uint32_t param);
+// LOCAL uint32_t _s5k4ec_check_image_format_support(uint32_t param);
+// LOCAL uint32_t _s5k4ec_pick_out_jpeg_stream(uint32_t param);
 LOCAL uint32_t _s5k4ec_after_snapshot(uint32_t param);
 LOCAL uint32_t _s5k4ec_GetExifInfo(uint32_t param);
 LOCAL uint32_t _s5k4ec_ExtFunc(uint32_t ctl_param);
@@ -1994,7 +1994,7 @@ LOCAL uint32_t _s5k4ec_StreamOn(__attribute__((unused)) uint32_t param)
 			if (s_ddr_boosted == 0) {
 				SENSOR_PRINT_HIGH("workaround: Increasing DDR freq for 720p recording");
 				if (s5k4ec_ddr_is_slow(1))
-					SENSOR_PRINT_HIGH("Failed to apply workaround: %d");
+					SENSOR_PRINT_HIGH("Failed to apply workaround");
 			}
 		}
 #endif
@@ -2581,7 +2581,7 @@ LOCAL uint32_t s5k4ec_set_FPS(uint32_t fps)
 
 	return s5k4ec_set_FPS_mode(mode);
 }
-
+#ifdef WA_LIMIT_HD_CAM_FPS
 LOCAL uint32_t s5k4ec_set_manual_FPS(uint32_t min, uint32_t max)
 {
 	uint16_t FrRateQualityType;
@@ -2631,7 +2631,7 @@ LOCAL uint32_t s5k4ec_set_manual_FPS(uint32_t min, uint32_t max)
 	s_fps_cur_mode = FPS_MODE_MANUAL;
 	return SENSOR_SUCCESS;
 }
-
+#endif
 LOCAL void s5k4ec_set_REG_TC_DBG_AutoAlgEnBits(int bit, int set)
 {
 	uint16_t REG_TC_DBG_AutoAlgEnBits = 0;

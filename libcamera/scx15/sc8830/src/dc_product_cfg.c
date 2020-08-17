@@ -46,9 +46,9 @@ static uint8_t  exif_user_comments[20] = {
 static EXIF_SPEC_USER_T s_dc_exif_spec_user_info;
 
 static DC_PRODUCT_CFG_T s_dc_product_cfg_info = {
-	SCI_TRUE, SCI_TRUE, SCI_FALSE, SCI_FALSE, DC_MEM_SIZE,
+	SCI_TRUE, SCI_TRUE, SCI_FALSE, SCI_FALSE,
 	DV_MEM_SIZE, VT_MEM_SIZE, DC_MAX_VIDEO_MODE_CIF,
-	DC_PRODUCT_FLASH_TYPE_DISABLE
+	DC_PRODUCT_FLASH_TYPE_DISABLE, DC_PRODUCT_MEM_TYPE_NAND
 };
 
 static DC_PRODUCT_CFG_FUNC_TAB_T s_dc_product_cfg_fun = {

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include <stdlib.h>
+#include <strings.h>
 #include <math.h>
 #include <cutils/properties.h>
 #include "SprdOEMCamera.h"

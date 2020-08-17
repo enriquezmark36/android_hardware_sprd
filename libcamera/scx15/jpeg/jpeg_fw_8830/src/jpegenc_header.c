@@ -148,24 +148,6 @@ PUBLIC JPEG_RET_E JPEG_HWWriteTailForThumbnail(void){
 	return JPEG_SUCCESS;
 }
 
-LOCAL void WriteThumbnailData(APP1_T *app1_t)
-{
-	uint32 *buf32 = NULL;
-	uint8 *buf8 = NULL;
-	uint32 i, j;
-	
-	buf32 = (uint32 *)app1_t->thumbnail_virt_addr;	
-	for(i = 0; i < (app1_t->thumbnail_len / 4); i++){
-		JPEGFW_PutBits32_II(*buf32++, 32);		
-	}
-	buf8 = (uint8*)buf32;
-	for(j = 0; j < (app1_t->thumbnail_len - i * 4); j++){
-		JPEGFW_PutC(*buf8++); 			 			
-	}
-	buf32 = NULL;
-	buf8 = NULL;
-}
-
 #if 1
 #define MAX_APP1_SIZE	(64*1024)
 PUBLIC JPEG_RET_E PutAPP1(APP1_T *app1_t)
@@ -218,6 +200,24 @@ PUBLIC JPEG_RET_E PutAPP1(APP1_T *app1_t)
 	return JPEG_SUCCESS;
 }
 #else
+LOCAL void WriteThumbnailData(APP1_T *app1_t)
+{
+	uint32 *buf32 = NULL;
+	uint8 *buf8 = NULL;
+	uint32 i, j;
+
+	buf32 = (uint32 *)app1_t->thumbnail_virt_addr;
+	for(i = 0; i < (app1_t->thumbnail_len / 4); i++){
+		JPEGFW_PutBits32_II(*buf32++, 32);
+	}
+	buf8 = (uint8*)buf32;
+	for(j = 0; j < (app1_t->thumbnail_len - i * 4); j++){
+		JPEGFW_PutC(*buf8++);
+	}
+	buf32 = NULL;
+	buf8 = NULL;
+}
+
 PUBLIC JPEG_RET_E PutAPP1(APP1_T *app1_t)
 {
 	uint32 description_len = strlen(app1_t->image_description) + 1;

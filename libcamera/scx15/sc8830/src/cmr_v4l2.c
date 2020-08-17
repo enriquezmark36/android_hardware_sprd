@@ -16,6 +16,8 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <string.h>
+#include <strings.h>
 #include <sys/ioctl.h>
 #include <errno.h>
 #include <linux/videodev2.h>
@@ -487,7 +489,6 @@ int cmr_v4l2_cap_stop(void)
 		(*stream_on_cb)(0);
 	}
 
-exit:
 	CMR_LOGI("ret = %d.",ret);
 	return ret;
 }

@@ -67,7 +67,7 @@ static int efuse_write(unsigned int blk, unsigned int val)
 	char magic[8]={0}, buf[16] = {0};
 	off_t curpos,offset;
 	int fd = -1;
-	int len = 0, ret = 0;
+	int len = 0;
 	char *pBuf = (char*)&val;
 
 	ALOGD("%s()->Line:%d; blk = %d, data = 0x%08x \n", __FUNCTION__, __LINE__, blk, val);
@@ -117,7 +117,7 @@ static int efuse_read(unsigned int blk, unsigned char* data)
 {
 	char buf[5] = {0};
 	off_t curpos,offset;
-	int fd = -1, ret = 0,i=0;
+	int fd = -1, ret = 0;
 	if(data == 0)
 		return -1;
 
@@ -141,7 +141,7 @@ static int efuse_read(unsigned int blk, unsigned char* data)
 	}
         close(fd);
 	//*data = strtoul(buf1, 0, 16);
-	sprintf(data,"%02x%02x%02x%02x",buf[3],buf[2],buf[1],buf[0]);
+	sprintf((char *)data,"%02x%02x%02x%02x",buf[3],buf[2],buf[1],buf[0]);
 	ALOGD("buf=%s\n",data);
 	return 1;
 }
@@ -164,7 +164,7 @@ int efuse_secure_is_enabled(void)
 	unsigned char value[10] = {0};
 	unsigned int _value = 0;
 	int ret = efuse_read(SECURE_BOOT_BLOCK, value);
-	_value = (unsigned int)(strtoul(value,0,16));
+	_value = (unsigned int)(strtoul((const char*)value,0,16));
 	if (ret <= 0)
 		return 0;
 
@@ -175,7 +175,7 @@ int efuse_is_hash_write(void)
 {
 	char read_hash[41] = {0},tmp_str[9]={0},*p=NULL;
 	int value=0,i=0,cnt=0;	
-	if(efuse_hash_read(read_hash,40) < 0){
+	if(efuse_hash_read((unsigned char *)read_hash,40) < 0){
 		ALOGD("%s()->Line:%d; read hash string = %s,\n", __FUNCTION__, __LINE__,read_hash);
 		return -1;
 	}
@@ -210,7 +210,7 @@ int efuse_hash_read(unsigned char *hash, int count)
 		}
 	}
 	ALOGD("values=%s\n",values);
-	strncpy( hash, values, len);
+	strncpy((char*)hash, (const char*)values, len);
         //memcpy((unsigned char*) hash, (char*) &buf, len);
 
 	ALOGD("%s()->Line:%d; hash = %s, len = %d \n", __FUNCTION__, __LINE__, hash, len-1);
@@ -224,7 +224,7 @@ int efuse_hash_write(unsigned char *hash, int count)
 	char buf[9] = { 0 },tmp_hash[9] = {0},read_hash[9]={0};
 	unsigned char *p = hash;
 	unsigned int value = 0;
-	unsigned char *q=  (char*)&value;
+	unsigned char *q = (unsigned char*)&value;
 	if ((0 == p) || (count < 1))
 		return -1;
 	write_ok_flag = 0;
@@ -242,7 +242,7 @@ int efuse_hash_write(unsigned char *hash, int count)
 		if((ret = efuse_write(j, value)) <= 0) {
 			return -2;
 		}
-		if(efuse_read(j,read_hash) < 0){
+		if(efuse_read(j,(unsigned char*)read_hash) < 0){
 			ALOGD("%s()->Line:%d; read hash error\n", __FUNCTION__, __LINE__);
 			return -3;	
 		}
@@ -271,14 +271,14 @@ int efuse_uid_read(unsigned char *uid, int count)
 	if ((0 == uid) || (count < 1))
 		return -1;
 
-	len = MIN(count, sizeof(values));
+	len = MIN((unsigned int) count, sizeof(values));
 	for (i = UID_BLOCK_START; i <= UID_BLOCK_END; i++) {
 		ret = efuse_read(i, &values[(i - UID_BLOCK_START) * 8]);
 		if (ret <= 0) {
 			return -2;
 		}
 	}
-	strncpy(uid, values, len);
+	strncpy((char *)uid, (const char*)values, len);
         //uid = (unsigned char*)memcpy((unsigned char*) uid, (char*) &buf, len);
 
 	ALOGD("%s()->Line:%d; uid = %s, len = %d \n", __FUNCTION__, __LINE__, uid, len-1);

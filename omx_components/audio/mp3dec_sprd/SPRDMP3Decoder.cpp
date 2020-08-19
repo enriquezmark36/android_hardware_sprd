@@ -27,7 +27,7 @@
 
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/foundation/hexdump.h>
-#include <media/MediaDefs.h>
+#include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MediaErrors.h>
 
 namespace android {
@@ -60,11 +60,11 @@ SPRDMP3Decoder::SPRDMP3Decoder(
       mSignalledError(false),
       mInputEosUnDecode(false),
       mLibHandle(NULL),
-      mOutputPortSettingsChange(NONE),
       mMP3_ARM_DEC_Construct(NULL),
       mMP3_ARM_DEC_Deconstruct(NULL),
       mMP3_ARM_DEC_InitDecoder(NULL),
-      mMP3_ARM_DEC_DecodeFrame(NULL) {
+      mMP3_ARM_DEC_DecodeFrame(NULL),
+      mOutputPortSettingsChange(NONE) {
     bool ret = false;
     ret = openDecoder("libomx_mp3dec_sprd.so");
     CHECK_EQ(ret, true);
@@ -430,6 +430,7 @@ void SPRDMP3Decoder::onQueueFilled(OMX_U32 portIndex) {
 
     List<BufferInfo *> &inQueue = getPortQueue(0);
     List<BufferInfo *> &outQueue = getPortQueue(1);
+    (void) portIndex;
 
     while ((!inQueue.empty() || mInputEosUnDecode) && !outQueue.empty()) {
         BufferInfo *inInfo = NULL;;
@@ -592,7 +593,7 @@ void SPRDMP3Decoder::onQueueFilled(OMX_U32 portIndex) {
         }
 
         if (numOutBytes <= outHeader->nOffset) {
-            ALOGI("onQueueFilled, numOutBytes:%d <= outHeader->nOffset:%ld, continue", numOutBytes, outHeader->nOffset);
+            ALOGI("onQueueFilled, numOutBytes:%d <= outHeader->nOffset:%u, continue", numOutBytes, outHeader->nOffset);
             continue;
         }
 

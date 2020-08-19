@@ -61,17 +61,18 @@ private:
     uint32_t mFrameSize;
     int32_t mChannels;
     int32_t mSamplingRate;
-    uint16_t *mPcm_out_l;
-    uint16_t *mPcm_out_r;
     bool mSeekFlag;
     uint8_t *mSpecialData;
     uint32_t mSpecialDataLen;
- 
+
+    uint16_t *mPcm_out_l;
+    uint16_t *mPcm_out_r;
     size_t mInputBufferCount;
 //    size_t mUpsamplingFactor;
     int64_t mAnchorTimeUs;
     int64_t mNumSamplesOutput;
     void* mLibHandle;
+    bool mSignalledError;
 
     FT_AAC_MemoryFree mAAC_MemoryFree;
     FT_AAC_MemoryAlloc mAAC_MemoryAlloc;
@@ -80,7 +81,6 @@ private:
     FT_AAC_FrameDecode mAAC_FrameDecode;
     FT_AAC_DecStreamBufferUpdate  mAAC_DecStreamBufferUpdate;
 
-    bool mSignalledError;
     enum {
         NONE,
         AWAITING_DISABLED,

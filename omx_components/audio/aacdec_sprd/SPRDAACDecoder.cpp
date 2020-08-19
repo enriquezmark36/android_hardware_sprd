@@ -27,7 +27,7 @@
 
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/foundation/hexdump.h>
-#include <media/MediaDefs.h>
+#include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MediaErrors.h>
 
 namespace android {
@@ -455,7 +455,6 @@ void SPRDAACDecoder::onQueueFilled(OMX_U32 portIndex) {
         }
     }
 
-decoding:
     while (!inQueue.empty() && !outQueue.empty()) {
         BufferInfo *inInfo = *inQueue.begin();
         OMX_BUFFERHEADERTYPE *inHeader = inInfo->mHeader;
@@ -493,7 +492,7 @@ decoding:
             bool signalError = false;
             if (inHeader->nFilledLen < 7) {
                 ALOGE("Audio data too short to contain even the ADTS header. "
-                      "Got %ld bytes.", inHeader->nFilledLen);
+                      "Got %u bytes.", inHeader->nFilledLen);
                 hexdump(adtsHeader, inHeader->nFilledLen);
                 signalError = true;
             } else {
@@ -506,7 +505,7 @@ decoding:
 
                 if (inHeader->nFilledLen < aac_frame_length) {
                     ALOGE("Not enough audio data for the complete frame. "
-                          "Got %ld bytes, frame size according to the ADTS "
+                          "Got %u bytes, frame size according to the ADTS "
                           "header is %u bytes.",
                           inHeader->nFilledLen, aac_frame_length);
                     hexdump(adtsHeader, inHeader->nFilledLen);

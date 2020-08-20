@@ -21,7 +21,7 @@
 #include "SPRDVPXDecoder.h"
 
 #include <media/stagefright/foundation/ADebug.h>
-#include <media/MediaDefs.h>
+#include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MediaErrors.h>
 #include <media/IOMX.h>
 #include <media/hardware/HardwareAPI.h>
@@ -32,7 +32,7 @@
 #include "gralloc_priv.h"
 #include "vpx_dec_api.h"
 #include <dlfcn.h>
-#include "ion_sprd.h"
+#include <video/ion_sprd.h>
 
 //#define VIDEODEC_CURRENT_OPT  /*only open for SAMSUNG currently*/
 
@@ -419,7 +419,7 @@ void SPRDVPXDecoder::releaseDecoder()
 
 OMX_ERRORTYPE SPRDVPXDecoder::internalGetParameter(
     OMX_INDEXTYPE index, OMX_PTR params) {
-    switch (index) {
+    switch ((int)index) {
     case OMX_IndexParamVideoPortFormat:
     {
         OMX_VIDEO_PARAM_PORTFORMATTYPE *formatParams =
@@ -504,7 +504,7 @@ OMX_ERRORTYPE SPRDVPXDecoder::internalGetParameter(
 
 OMX_ERRORTYPE SPRDVPXDecoder::internalSetParameter(
     OMX_INDEXTYPE index, const OMX_PTR params) {
-    switch (index) {
+    switch ((int)index) {
     case OMX_IndexParamStandardComponentRole:
     {
         const OMX_PARAM_COMPONENTROLETYPE *roleParams =
@@ -790,7 +790,11 @@ OMX_ERRORTYPE SPRDVPXDecoder::freeBuffer(
         BufferCtrlStruct* pBufCtrl= (BufferCtrlStruct*)(header->pOutputPortPrivate);
         if(pBufCtrl != NULL) {
             if(pBufCtrl->pMem != NULL) {
+#ifdef SOC_SCX35
+                ALOGI("freeBuffer, phyAddr: 0x%u", pBufCtrl->phyAddr);
+#else
                 ALOGI("freeBuffer, phyAddr: 0x%lx", pBufCtrl->phyAddr);
+#endif
                 if (mIOMMUEnabled) {
 #ifdef SOC_SCX35
                     pBufCtrl->pMem->free_mm_iova(pBufCtrl->phyAddr, pBufCtrl->bufferSize);
@@ -812,7 +816,7 @@ OMX_ERRORTYPE SPRDVPXDecoder::freeBuffer(
     }
 }
 
-void SPRDVPXDecoder::onQueueFilled(OMX_U32 portIndex) {
+void SPRDVPXDecoder::onQueueFilled(OMX_U32 /*portIndex*/) {
     if (mSignalledError || mOutputPortSettingsChange != NONE) {
         return;
     }
@@ -1184,7 +1188,7 @@ void SPRDVPXDecoder::onReset() {
     mOutputPortSettingsChange = NONE;
 }
 
-void SPRDVPXDecoder::updatePortDefinitions(bool updateCrop, bool updateInputSize) {
+void SPRDVPXDecoder::updatePortDefinitions(bool updateCrop, bool /*updateInputSize*/) {
     OMX_PARAM_PORTDEFINITIONTYPE *outDef = &editPortInfo(kOutputPortIndex)->mDef;
 
     if (updateCrop) {
@@ -1244,7 +1248,7 @@ int32_t SPRDVPXDecoder::UnbindFrameWrapper(
     return static_cast<SPRDVPXDecoder *>(aUserData)->VSP_unbind_cb(pHeader, flag);
 }
 
-int SPRDVPXDecoder::VSP_bind_cb(void *pHeader,int flag) {
+int SPRDVPXDecoder::VSP_bind_cb(void *pHeader,int /*flag*/) {
     BufferCtrlStruct *pBufCtrl = (BufferCtrlStruct *)(((OMX_BUFFERHEADERTYPE *)pHeader)->pOutputPortPrivate);
 
     ALOGI("VSP_bind_cb, pBuffer: %p, pHeader: %p; iRefCount=%d",
@@ -1254,7 +1258,7 @@ int SPRDVPXDecoder::VSP_bind_cb(void *pHeader,int flag) {
     return 0;
 }
 
-int SPRDVPXDecoder::VSP_unbind_cb(void *pHeader,int flag) {
+int SPRDVPXDecoder::VSP_unbind_cb(void *pHeader,int /*flag*/) {
     BufferCtrlStruct *pBufCtrl = (BufferCtrlStruct *)(((OMX_BUFFERHEADERTYPE *)pHeader)->pOutputPortPrivate);
 
     ALOGI("VSP_unbind_cb, pBuffer: %p, pHeader: %p; iRefCount=%d",

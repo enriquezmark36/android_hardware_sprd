@@ -21,7 +21,7 @@
 #include "SPRDVPXDecoder.h"
 
 #include <media/stagefright/foundation/ADebug.h>
-#include <media/MediaDefs.h>
+#include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MediaErrors.h>
 #include <media/IOMX.h>
 #include <media/hardware/HardwareAPI.h>
@@ -32,7 +32,7 @@
 #include "gralloc_priv.h"
 #include "vpx_dec_api.h"
 #include <dlfcn.h>
-#include "ion_sprd.h"
+#include <video/ion_sprd.h>
 
 //#define VIDEODEC_CURRENT_OPT  /*only open for SAMSUNG currently*/
 
@@ -60,17 +60,16 @@ SPRDVPXDecoder::SPRDVPXDecoder(
       mHeight(240),
       mMaxWidth(352),
       mMaxHeight(288),
-      mOutputPortSettingsChange(NONE),
+      mSetFreqCount(0),
       mSignalledError(false),
       mIOMMUEnabled(false),
       mPbuf_inter(NULL),
-      mPbuf_extra_v(NULL),
-      mPbuf_extra_p(0),
-      mPbuf_extra_size(0),
       mPbuf_stream_v(NULL),
       mPbuf_stream_p(0),
       mPbuf_stream_size(0),
-      mSetFreqCount(0),
+      mPbuf_extra_v(NULL),
+      mPbuf_extra_p(0),
+      mPbuf_extra_size(0),
       mEOSStatus(INPUT_DATA_AVAILABLE),
       mLibHandle(NULL),
       mVPXDecSetCurRecPic(NULL),
@@ -78,9 +77,9 @@ SPRDVPXDecoder::SPRDVPXDecoder(
       mVPXDecDecode(NULL),
       mVPXDecRelease(NULL),
       mVPXDecReleaseRefBuffers(NULL),
-      mVPXDecGetLastDspFrm(NULL) {
-
-    ALOGI("Construct SPRDVPXDecoder, this: %0x", (void *)this);
+      mVPXDecGetLastDspFrm(NULL),
+      mOutputPortSettingsChange(NONE) {
+    ALOGI("Construct SPRDVPXDecoder, this: %p", (void *)this);
 
     initPorts();
     CHECK_EQ(openDecoder("libomx_vpxdec_hw_sprd.so"), true);
@@ -96,7 +95,7 @@ SPRDVPXDecoder::SPRDVPXDecoder(
 
 SPRDVPXDecoder::~SPRDVPXDecoder() {
 
-    ALOGI("Destruct SPRDVPXDecoder, this: %0x", (void *)this);
+    ALOGI("Destruct SPRDVPXDecoder, this: %p", (void *)this);
 
     (*mVPXDecRelease)(mHandle);
 
@@ -220,7 +219,7 @@ void SPRDVPXDecoder::set_ddr_freq(const char* freq_in_khz)
 void SPRDVPXDecoder::change_ddr_freq()
 {
     uint32_t frame_size = mWidth * mHeight;
-    char* ddr_freq;
+    const char* ddr_freq;
 
     if(frame_size > 1280*720)
     {
@@ -339,7 +338,7 @@ status_t SPRDVPXDecoder::initDecoder() {
 
 OMX_ERRORTYPE SPRDVPXDecoder::internalGetParameter(
     OMX_INDEXTYPE index, OMX_PTR params) {
-    switch (index) {
+    switch ((int)index) {
     case OMX_IndexParamVideoPortFormat:
     {
         OMX_VIDEO_PARAM_PORTFORMATTYPE *formatParams =
@@ -399,7 +398,7 @@ OMX_ERRORTYPE SPRDVPXDecoder::internalGetParameter(
 
 OMX_ERRORTYPE SPRDVPXDecoder::internalSetParameter(
     OMX_INDEXTYPE index, const OMX_PTR params) {
-    switch (index) {
+    switch ((int)index) {
     case OMX_IndexParamStandardComponentRole:
     {
         const OMX_PARAM_COMPONENTROLETYPE *roleParams =
@@ -626,7 +625,7 @@ OMX_ERRORTYPE SPRDVPXDecoder::allocateBuffer(
         bufferPrivate->pMem = pMem;
         bufferPrivate->phyAddr = phyAddr;
         bufferPrivate->bufferSize = bufferSize;
-        ALOGI("allocateBuffer, allocate buffer from pmem, pBuffer: 0x%x, phyAddr: 0x%x, size: %d", pBuffer, phyAddr, bufferSize);
+        ALOGI("allocateBuffer, allocate buffer from pmem, pBuffer: %p, phyAddr: 0x%x, size: %d", pBuffer, phyAddr, bufferSize);
 
         SprdSimpleOMXComponent::useBuffer(header, portIndex, appPrivate, bufferSize, pBuffer, bufferPrivate);
         delete bufferPrivate;
@@ -671,7 +670,7 @@ OMX_ERRORTYPE SPRDVPXDecoder::freeBuffer(
     }
 }
 
-void SPRDVPXDecoder::onQueueFilled(OMX_U32 portIndex) {
+void SPRDVPXDecoder::onQueueFilled(OMX_U32 /*portIndex*/) {
     if (mSignalledError || mOutputPortSettingsChange != NONE) {
         return;
     }
@@ -722,8 +721,8 @@ void SPRDVPXDecoder::onQueueFilled(OMX_U32 portIndex) {
         }
         while(pBufCtrl->iRefCount > 0);
 
-        ALOGI("%s, %d, mBuffer=0x%x, outHeader=0x%x, iRefCount=%d", __FUNCTION__, __LINE__, *itBuffer, outHeader, pBufCtrl->iRefCount);
-        ALOGI("%s, %d, inHeader: 0x%x, len: %d, time: %lld, EOS: %d", __FUNCTION__, __LINE__,inHeader, inHeader->nFilledLen,inHeader->nTimeStamp,inHeader->nFlags & OMX_BUFFERFLAG_EOS);
+        ALOGI("%s, %d, mBuffer=%p, outHeader=%p, iRefCount=%d", __FUNCTION__, __LINE__, (void*) *itBuffer, outHeader, pBufCtrl->iRefCount);
+        ALOGI("%s, %d, inHeader: %p, len: %d, time: %lld, EOS: %d", __FUNCTION__, __LINE__,inHeader, inHeader->nFilledLen,inHeader->nTimeStamp,inHeader->nFlags & OMX_BUFFERFLAG_EOS);
 
         if (inHeader->nFlags & OMX_BUFFERFLAG_EOS) {
             mEOSStatus = INPUT_EOS_SEEN; //the last frame size may be not zero, it need to be decoded.
@@ -798,13 +797,13 @@ void SPRDVPXDecoder::onQueueFilled(OMX_U32 portIndex) {
             usage = GRALLOC_USAGE_SW_READ_OFTEN|GRALLOC_USAGE_SW_WRITE_OFTEN;
 
             if(mapper.lock((const native_handle_t*)outHeader->pBuffer, usage, bounds, &vaddr)) {
-                ALOGI("onQueueFilled, mapper.lock fail %x",outHeader->pBuffer);
+                ALOGI("onQueueFilled, mapper.lock fail %p", (void*)(outHeader->pBuffer));
                 return ;
             }
 //    	ALOGI("%s, %d, pBuffer: 0x%x, vaddr: 0x%x", __FUNCTION__, __LINE__, outHeader->pBuffer,vaddr);
             uint8 *yuv = ((uint8 *)vaddr) + outHeader->nOffset;
-            ALOGI("%s, %d, yuv: %0x,outHeader->pBuffer: %0x, outHeader->nOffset: %d, outHeader->nFlags: %d, outHeader->nTimeStamp: %lld",
-                  __FUNCTION__, __LINE__, yuv, outHeader->pBuffer, outHeader->nOffset, outHeader->nFlags, outHeader->nTimeStamp);
+            ALOGI("%s, %d, yuv: %p,outHeader->pBuffer: %p, outHeader->nOffset: %d, outHeader->nFlags: %d, outHeader->nTimeStamp: %lld",
+                  __FUNCTION__, __LINE__, yuv, (void *)(outHeader->pBuffer), outHeader->nOffset, outHeader->nFlags, outHeader->nTimeStamp);
             (*mVPXDecSetCurRecPic)(mHandle, yuv, (uint8 *)picPhyAddr, (void *)outHeader);
         } else {
             (*mVPXDecSetCurRecPic)(mHandle, outHeader->pBuffer, (uint8 *)picPhyAddr, (void *)outHeader);
@@ -817,7 +816,7 @@ void SPRDVPXDecoder::onQueueFilled(OMX_U32 portIndex) {
 
         if(iUseAndroidNativeBuffer[OMX_DirOutput]) {
             if(mapper.unlock((const native_handle_t*)outHeader->pBuffer)) {
-                ALOGI("onQueueFilled, mapper.unlock fail %x",outHeader->pBuffer);
+                ALOGI("onQueueFilled, mapper.unlock fail %p", (void *) (outHeader->pBuffer));
             }
         }
 
@@ -862,7 +861,7 @@ void SPRDVPXDecoder::onQueueFilled(OMX_U32 portIndex) {
         }
 
         ALOGI("%s, %d, bufferSize: %d, inHeader->nFilledLen: %d", __FUNCTION__, __LINE__, bufferSize, inHeader->nFilledLen);
-        CHECK_LE(bufferSize, inHeader->nFilledLen);
+        CHECK_LE((uint32_t)bufferSize, (uint32_t)(inHeader->nFilledLen));
         inHeader->nOffset += inHeader->nFilledLen - bufferSize;
         inHeader->nFilledLen -= bufferSize;
 
@@ -887,7 +886,7 @@ void SPRDVPXDecoder::onQueueFilled(OMX_U32 portIndex) {
             outHeader->nFilledLen = (mWidth * mHeight * 3) / 2;
             outHeader->nFlags = 0;
 
-            ALOGI("%s, %d, outHeader 0x%x", __FUNCTION__, __LINE__, outHeader);
+            ALOGI("%s, %d, outHeader %p", __FUNCTION__, __LINE__, outHeader);
 //           dump_yuv(outHeader->pBuffer, outHeader->nFilledLen);
         } else {
             //return;
@@ -925,7 +924,7 @@ bool SPRDVPXDecoder::drainAllOutputBuffers() {
     while (!outQueue.empty() && mEOSStatus != OUTPUT_FRAMES_FLUSHED) {
 
         if ((*mVPXDecGetLastDspFrm)(mHandle, &pBufferHeader) ) {
-            ALOGI("%s, %d, VPXDecGetLastDspFrm, pBufferHeader: 0x%x", __FUNCTION__, __LINE__, pBufferHeader);
+            ALOGI("%s, %d, VPXDecGetLastDspFrm, pBufferHeader: %p", __FUNCTION__, __LINE__, pBufferHeader);
             List<BufferInfo *>::iterator it = outQueue.begin();
             while ((*it)->mHeader != (OMX_BUFFERHEADERTYPE*)pBufferHeader && it != outQueue.end()) {
                 ++it;
@@ -1048,19 +1047,19 @@ int32_t SPRDVPXDecoder::UnbindFrameWrapper(
     return static_cast<SPRDVPXDecoder *>(aUserData)->VSP_unbind_cb(pHeader, flag);
 }
 
-int SPRDVPXDecoder::VSP_bind_cb(void *pHeader,int flag) {
+int SPRDVPXDecoder::VSP_bind_cb(void *pHeader,int /*flag*/) {
     BufferCtrlStruct *pBufCtrl = (BufferCtrlStruct *)(((OMX_BUFFERHEADERTYPE *)pHeader)->pOutputPortPrivate);
-    ALOGI("VSP_bind_cb, ref frame: 0x%x, 0x%x; iRefCount=%d",
-          ((OMX_BUFFERHEADERTYPE *)pHeader)->pBuffer, pHeader,pBufCtrl->iRefCount);
+    ALOGI("VSP_bind_cb, ref frame: %p, %p; iRefCount=%d",
+          (void *)(((OMX_BUFFERHEADERTYPE *)pHeader)->pBuffer), pHeader,pBufCtrl->iRefCount);
     pBufCtrl->iRefCount++;
     return 0;
 }
 
-int SPRDVPXDecoder::VSP_unbind_cb(void *pHeader,int flag) {
+int SPRDVPXDecoder::VSP_unbind_cb(void *pHeader,int /*flag*/) {
     BufferCtrlStruct *pBufCtrl = (BufferCtrlStruct *)(((OMX_BUFFERHEADERTYPE *)pHeader)->pOutputPortPrivate);
 
-    ALOGI("VSP_unbind_cb, ref frame: 0x%x, 0x%x; iRefCount=%d",
-          ((OMX_BUFFERHEADERTYPE *)pHeader)->pBuffer, pHeader,pBufCtrl->iRefCount);
+    ALOGI("VSP_unbind_cb, ref frame: %p, %p; iRefCount=%d",
+          (void *)(((OMX_BUFFERHEADERTYPE *)pHeader)->pBuffer), pHeader,pBufCtrl->iRefCount);
 
     if (pBufCtrl->iRefCount  > 0) {
         pBufCtrl->iRefCount--;

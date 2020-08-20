@@ -21,7 +21,7 @@
 #include "m4v_h263_enc_api.h"
 
 #include <media/stagefright/foundation/ADebug.h>
-#include <media/MediaDefs.h>
+#include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MediaErrors.h>
 #include <media/stagefright/MetaData.h>
 #include <media/stagefright/Utils.h>
@@ -39,7 +39,7 @@
 #include <dlfcn.h>
 
 #include "SPRDMPEG4Encoder.h"
-#include "ion_sprd.h"
+#include <video/ion_sprd.h>
 
 
 #define VIDEOENC_CURRENT_OPT
@@ -122,6 +122,17 @@ SPRDMPEG4Encoder::SPRDMPEG4Encoder(
     OMX_PTR appData,
     OMX_COMPONENTTYPE **component)
     : SprdSimpleOMXComponent(name, callbacks, appData, component),
+      mStoreMetaData(OMX_FALSE),
+      mPbuf_yuv_v(NULL),
+      mPbuf_yuv_p(0),
+      mPbuf_yuv_size(0),
+      mPbuf_inter(NULL),
+      mPbuf_stream_v(NULL),
+      mPbuf_stream_p(0),
+      mPbuf_stream_size(0),
+      mPbuf_extra_v(NULL),
+      mPbuf_extra_p(0),
+      mPbuf_extra_size(0),
       mVideoWidth(176),
       mVideoHeight(144),
       mVideoFrameRate(30),
@@ -132,17 +143,6 @@ SPRDMPEG4Encoder::SPRDMPEG4Encoder(
       mStarted(false),
       mSawInputEOS(false),
       mSignalledError(false),
-      mStoreMetaData(OMX_FALSE),
-      mPbuf_yuv_v(NULL),
-      mPbuf_yuv_p(0),
-      mPbuf_yuv_size(0),
-      mPbuf_inter(NULL),
-      mPbuf_extra_v(NULL),
-      mPbuf_extra_p(0),
-      mPbuf_extra_size(0),
-      mPbuf_stream_v(NULL),
-      mPbuf_stream_p(0),
-      mPbuf_stream_size(0),
       mHandle(new tagMP4Handle),
       mEncConfig(new MMEncConfig),
       mSetFreqCount(0),
@@ -156,7 +156,7 @@ SPRDMPEG4Encoder::SPRDMPEG4Encoder(
       mMP4EncGenHeader(NULL),
       mMP4EncRelease(NULL) {
 
-    ALOGI("Construct SPRDMPEG4Encoder, this: %0x", (void *)this);
+    ALOGI("Construct SPRDMPEG4Encoder, this: %p", (void *)this);
 
     CHECK(mHandle != NULL);
     memset(mHandle, 0, sizeof(tagMP4Handle));
@@ -204,7 +204,7 @@ SPRDMPEG4Encoder::SPRDMPEG4Encoder(
 }
 
 SPRDMPEG4Encoder::~SPRDMPEG4Encoder() {
-    ALOGI("Destruct SPRDMPEG4Encoder, this: %0x", (void *)this);
+    ALOGI("Destruct SPRDMPEG4Encoder, this: %p", (void *)this);
 
     releaseEncoder();
 
@@ -507,7 +507,7 @@ void SPRDMPEG4Encoder::initPorts() {
 
 OMX_ERRORTYPE SPRDMPEG4Encoder::internalGetParameter(
     OMX_INDEXTYPE index, OMX_PTR params) {
-    switch (index) {
+    switch ((int)index) {
     case OMX_IndexParamVideoErrorCorrection:
     {
         return OMX_ErrorNotImplemented;
@@ -642,7 +642,7 @@ OMX_ERRORTYPE SPRDMPEG4Encoder::internalGetParameter(
 
 OMX_ERRORTYPE SPRDMPEG4Encoder::internalSetParameter(
     OMX_INDEXTYPE index, const OMX_PTR params) {
-    switch (index) {
+    switch ((int)index) {
     case OMX_IndexParamVideoErrorCorrection:
     {
         return OMX_ErrorNotImplemented;
@@ -837,7 +837,7 @@ OMX_ERRORTYPE SPRDMPEG4Encoder::getExtensionIndex(
     return SprdSimpleOMXComponent::getExtensionIndex(name, index);
 }
 
-void SPRDMPEG4Encoder::onQueueFilled(OMX_U32 portIndex) {
+void SPRDMPEG4Encoder::onQueueFilled(OMX_U32 /*portIndex*/) {
     if (mSignalledError || mSawInputEOS) {
         return;
     }

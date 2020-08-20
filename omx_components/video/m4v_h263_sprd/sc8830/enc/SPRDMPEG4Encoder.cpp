@@ -21,7 +21,7 @@
 #include "m4v_h263_enc_api.h"
 
 #include <media/stagefright/foundation/ADebug.h>
-#include <media/MediaDefs.h>
+#include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MediaErrors.h>
 #include <media/stagefright/MetaData.h>
 #include <media/stagefright/Utils.h>
@@ -38,7 +38,7 @@
 #include "MemoryHeapIon.h"
 
 #include "SPRDMPEG4Encoder.h"
-#include "ion_sprd.h"
+#include <video/ion_sprd.h>
 #include "gralloc_priv.h"
 
 #define VIDEOENC_CURRENT_OPT
@@ -627,7 +627,7 @@ void SPRDMPEG4Encoder::initPorts() {
 
 OMX_ERRORTYPE SPRDMPEG4Encoder::internalGetParameter(
     OMX_INDEXTYPE index, OMX_PTR params) {
-    switch (index) {
+    switch ((int)index) {
     case OMX_IndexParamVideoErrorCorrection:
     {
         return OMX_ErrorNotImplemented;
@@ -857,7 +857,7 @@ OMX_ERRORTYPE SPRDMPEG4Encoder::internalGetParameter(
 
 OMX_ERRORTYPE SPRDMPEG4Encoder::internalSetParameter(
     OMX_INDEXTYPE index, const OMX_PTR params) {
-    switch (index) {
+    switch ((int)index) {
     case OMX_IndexParamVideoErrorCorrection:
     {
         return OMX_ErrorNotImplemented;
@@ -1097,7 +1097,7 @@ OMX_ERRORTYPE SPRDMPEG4Encoder::getExtensionIndex(
     return SprdSimpleOMXComponent::getExtensionIndex(name, index);
 }
 
-void SPRDMPEG4Encoder::onQueueFilled(OMX_U32 portIndex) {
+void SPRDMPEG4Encoder::onQueueFilled(OMX_U32 /*portIndex*/) {
     if (mSignalledError || mSawInputEOS) {
         return;
     }

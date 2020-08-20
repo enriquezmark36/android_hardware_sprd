@@ -21,7 +21,7 @@
 #include "SPRDMPEG4Decoder.h"
 
 #include <media/stagefright/foundation/ADebug.h>
-#include <media/MediaDefs.h>
+#include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MediaErrors.h>
 #include <media/IOMX.h>
 #include <media/hardware/HardwareAPI.h>
@@ -32,7 +32,7 @@
 #include "gralloc_priv.h"
 #include "m4v_h263_dec_api.h"
 #include <dlfcn.h>
-#include "ion_sprd.h"
+#include <video/ion_sprd.h>
 
 //#define VIDEODEC_CURRENT_OPT  /*only open for SAMSUNG currently*/
 
@@ -508,7 +508,7 @@ void SPRDMPEG4Decoder::releaseDecoder() {
 
 OMX_ERRORTYPE SPRDMPEG4Decoder::internalGetParameter(
     OMX_INDEXTYPE index, OMX_PTR params) {
-    switch (index) {
+    switch ((int)index) {
     case OMX_IndexParamVideoPortFormat:
     {
         OMX_VIDEO_PARAM_PORTFORMATTYPE *formatParams =
@@ -604,7 +604,7 @@ OMX_ERRORTYPE SPRDMPEG4Decoder::internalGetParameter(
 
 OMX_ERRORTYPE SPRDMPEG4Decoder::internalSetParameter(
     OMX_INDEXTYPE index, const OMX_PTR params) {
-    switch (index) {
+    switch ((int)index) {
     case OMX_IndexParamStandardComponentRole:
     {
         const OMX_PARAM_COMPONENTROLETYPE *roleParams =
@@ -904,11 +904,12 @@ OMX_ERRORTYPE SPRDMPEG4Decoder::freeBuffer(
         BufferCtrlStruct* pBufCtrl= (BufferCtrlStruct*)(header->pOutputPortPrivate);
         if(pBufCtrl != NULL) {
             if(pBufCtrl->pMem != NULL) {
-                ALOGI("freeBuffer, phyAddr: 0x%lx", pBufCtrl->phyAddr);
 #ifdef SOC_SCX35
+                ALOGI("freeBuffer, phyAddr: 0x%x", pBufCtrl->phyAddr);
                 if (mIOMMUEnabled)
                     pBufCtrl->pMem->free_mm_iova(pBufCtrl->phyAddr, pBufCtrl->bufferSize);
 #else
+                ALOGI("freeBuffer, phyAddr: 0x%lx", pBufCtrl->phyAddr);
                 if (mIOMMUEnabled) {
                     pBufCtrl->pMem->free_iova(mIOMMUID, pBufCtrl->phyAddr, pBufCtrl->bufferSize);
                 }
@@ -953,7 +954,7 @@ OMX_ERRORTYPE SPRDMPEG4Decoder::getConfig(
 
 OMX_ERRORTYPE SPRDMPEG4Decoder::setConfig(
     OMX_INDEXTYPE index, const OMX_PTR params) {
-    switch (index) {
+    switch ((int)index) {
     case OMX_IndexConfigThumbnailMode:
     {
         OMX_BOOL *pEnable = (OMX_BOOL *)params;
@@ -983,7 +984,7 @@ OMX_ERRORTYPE SPRDMPEG4Decoder::setConfig(
     }
 }
 
-void SPRDMPEG4Decoder::onQueueFilled(OMX_U32 portIndex) {
+void SPRDMPEG4Decoder::onQueueFilled(OMX_U32 /*portIndex*/) {
     if (mSignalledError || mOutputPortSettingsChange != NONE) {
         return;
     }
@@ -1240,12 +1241,12 @@ void SPRDMPEG4Decoder::onQueueFilled(OMX_U32 portIndex) {
         int64_t start_decode = systemTime();
         MMDecRet decRet =	(*mMP4DecDecode)( mHandle, &dec_in,&dec_out);
         int64_t end_decode = systemTime();
-        ALOGI("%s, %d, decRet: %d, %dms, frameEffective: %d, pOutFrameY: %0x, pBufferHeader: %0x, needIVOP: %d, error_flag: %0x",
+        ALOGI("%s, %d, decRet: %d, %dms, frameEffective: %d, pOutFrameY: %p, pBufferHeader: %p, needIVOP: %d, error_flag: %0x",
               __FUNCTION__, __LINE__, decRet, (unsigned int)((end_decode-start_decode) / 1000000L),dec_out.frameEffective, dec_out.pOutFrameY, dec_out.pBufferHeader,mNeedIVOP, mHandle->g_mpeg4_dec_err_flag);
 
         if(iUseAndroidNativeBuffer[OMX_DirOutput]) {
             if(mapper.unlock((const native_handle_t*)outHeader->pBuffer)) {
-                ALOGE("onQueueFilled, mapper.unlock fail %x",outHeader->pBuffer);
+                ALOGE("onQueueFilled, mapper.unlock fail %p", (void *)(outHeader->pBuffer));
             }
         }
 
@@ -1605,7 +1606,7 @@ int SPRDMPEG4Decoder::extMemoryAlloc(unsigned int extra_mem_size) {
     return 0;
 }
 
-int SPRDMPEG4Decoder::VSP_bind_cb(void *pHeader,int flag) {
+int SPRDMPEG4Decoder::VSP_bind_cb(void *pHeader,int /*flag*/) {
     BufferCtrlStruct *pBufCtrl = (BufferCtrlStruct *)(((OMX_BUFFERHEADERTYPE *)pHeader)->pOutputPortPrivate);
 
     ALOGI("VSP_bind_cb, pBuffer: 0x%p, pHeader: 0x%p; iRefCount=%d",
@@ -1615,7 +1616,7 @@ int SPRDMPEG4Decoder::VSP_bind_cb(void *pHeader,int flag) {
     return 0;
 }
 
-int SPRDMPEG4Decoder::VSP_unbind_cb(void *pHeader,int flag) {
+int SPRDMPEG4Decoder::VSP_unbind_cb(void *pHeader,int /*flag*/) {
     BufferCtrlStruct *pBufCtrl = (BufferCtrlStruct *)(((OMX_BUFFERHEADERTYPE *)pHeader)->pOutputPortPrivate);
 
     ALOGI("VSP_unbind_cb, pBuffer: 0x%p, pHeader: 0x%p; iRefCount=%d",

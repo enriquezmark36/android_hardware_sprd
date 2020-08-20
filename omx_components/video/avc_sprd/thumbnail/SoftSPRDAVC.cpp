@@ -21,7 +21,7 @@
 #include "SoftSPRDAVC.h"
 
 #include <media/stagefright/foundation/ADebug.h>
-#include <media/MediaDefs.h>
+#include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MediaErrors.h>
 #include <media/IOMX.h>
 
@@ -101,6 +101,9 @@ SoftSPRDAVC::SoftSPRDAVC(
     : SprdSimpleOMXComponent(name, callbacks, appData, component),
       mHandle(new tagAVCHandle),
       mInputBufferCount(0),
+      mStreamBuffer(NULL),
+      mCodecInterBuffer(NULL),
+      mCodecExtraBuffer(NULL),
       mWidth(320),
       mHeight(240),
       mPictureSize(mWidth * mHeight * 3 / 2),
@@ -108,25 +111,22 @@ SoftSPRDAVC::SoftSPRDAVC(
       mCropTop(0),
       mCropWidth(mWidth),
       mCropHeight(mHeight),
-      mPicId(0),
-      mHeadersDecoded(false),
-      mEOSStatus(INPUT_DATA_AVAILABLE),
-      mOutputPortSettingsChange(NONE),
-      mSignalledError(false),
-      mStopDecode(false),
       mLibHandle(NULL),
-      mNeedIVOP(true),
-      mStreamBuffer(NULL),
-      mCodecInterBuffer(NULL),
-      mCodecExtraBuffer(NULL),
-      mH264DecInit(NULL),
       mH264DecGetInfo(NULL),
+      mH264DecInit(NULL),
       mH264DecDecode(NULL),
       mH264DecRelease(NULL),
       mH264Dec_SetCurRecPic(NULL),
       mH264Dec_GetLastDspFrm(NULL),
       mH264Dec_ReleaseRefBuffers(NULL),
-      mH264DecMemInit(NULL) {
+      mH264DecMemInit(NULL),
+      mPicId(0),
+      mHeadersDecoded(false),
+      mEOSStatus(INPUT_DATA_AVAILABLE),
+      mStopDecode(false),
+      mNeedIVOP(true),
+      mOutputPortSettingsChange(NONE),
+      mSignalledError(false) {
     CHECK_EQ(openDecoder("libomx_avcdec_sw_sprd.so"), true);
     initPorts();
     CHECK_EQ(initDecoder(), (status_t)OK);
@@ -308,7 +308,7 @@ OMX_ERRORTYPE SoftSPRDAVC::internalGetParameter(
             (OMX_VIDEO_PARAM_PROFILELEVELTYPE *) params;
 
         if (profileLevel->nPortIndex != kInputPortIndex) {
-            ALOGE("Invalid port index: %ld", profileLevel->nPortIndex);
+            ALOGE("Invalid port index: %u", profileLevel->nPortIndex);
             return OMX_ErrorUnsupportedIndex;
         }
 
@@ -444,7 +444,7 @@ void dump_yuv( uint8* pBuffer,int32 aInBufSize) {
     fclose(fp);
 }
 
-void SoftSPRDAVC::onQueueFilled(OMX_U32 portIndex) {
+void SoftSPRDAVC::onQueueFilled(OMX_U32 /*portIndex*/) {
     if (mSignalledError || mOutputPortSettingsChange != NONE) {
         return;
     }
@@ -526,7 +526,7 @@ void SoftSPRDAVC::onQueueFilled(OMX_U32 portIndex) {
         outHeader->nFlags = inHeader->nFlags;
         outHeader->nFilledLen = mPictureSize;
 
-        ALOGI("%s, %d, outHeader:0x%x, inHeader: 0x%x, len: %d, nOffset: %d, time: %lld, EOS: %d",
+        ALOGI("%s, %d, outHeader:%p, inHeader: %p, len: %d, nOffset: %d, time: %lld, EOS: %d",
               __FUNCTION__, __LINE__,outHeader,inHeader, inHeader->nFilledLen,inHeader->nOffset, inHeader->nTimeStamp,inHeader->nFlags & OMX_BUFFERFLAG_EOS);
 
         uint8 *yuv = (uint8 *)(outHeader->pBuffer + outHeader->nOffset);
@@ -589,7 +589,7 @@ void SoftSPRDAVC::onQueueFilled(OMX_U32 portIndex) {
             continue;
         }
 
-        CHECK_LE(bufferSize, inHeader->nFilledLen);
+        CHECK_LE((uint32_t) bufferSize, (uint32_t)(inHeader->nFilledLen));
 
         ALOGI("%s, %d, bufferSize: %d, inHeader->nFilledLen: %d", __FUNCTION__, __LINE__, bufferSize, inHeader->nFilledLen);
         inHeader->nOffset += bufferSize;
@@ -607,7 +607,7 @@ void SoftSPRDAVC::onQueueFilled(OMX_U32 portIndex) {
         while (!outQueue.empty() &&
                 mHeadersDecoded &&
                 dec_out.frameEffective) {
-            ALOGI("%s, %d, dec_out.pBufferHeader: %0x, dec_out.mPicId: %d", __FUNCTION__, __LINE__, dec_out.pBufferHeader, dec_out.mPicId);
+            ALOGI("%s, %d, dec_out.pBufferHeader: %p, dec_out.mPicId: %d", __FUNCTION__, __LINE__, dec_out.pBufferHeader, dec_out.mPicId);
             int32_t picId = dec_out.mPicId;//decodedPicture.picId;
             drainOneOutputBuffer(picId, dec_out.pBufferHeader);
             dec_out.frameEffective = false;
@@ -651,7 +651,7 @@ bool SoftSPRDAVC::handleCropRectEvent(const CropParams *crop) {
     return false;
 }
 
-void SoftSPRDAVC::drainOneOutputBuffer(int32_t picId, void* pBufferHeader) {
+void SoftSPRDAVC::drainOneOutputBuffer(int32_t /*picId*/, void* pBufferHeader) {
 
     List<BufferInfo *> &outQueue = getPortQueue(kOutputPortIndex);
 
@@ -665,8 +665,8 @@ void SoftSPRDAVC::drainOneOutputBuffer(int32_t picId, void* pBufferHeader) {
 
     outHeader->nFilledLen = mPictureSize;
 
-    ALOGV("%s, %d, outHeader: %0x, outHeader->pBuffer: %0x, outHeader->nOffset: %d, outHeader->nFlags: %d, outHeader->nTimeStamp: %lld",
-          __FUNCTION__, __LINE__, outHeader , outHeader->pBuffer, outHeader->nOffset, outHeader->nFlags, outHeader->nTimeStamp);
+    ALOGV("%s, %d, outHeader: %p, outHeader->pBuffer: %p, outHeader->nOffset: %d, outHeader->nFlags: %d, outHeader->nTimeStamp: %lld",
+          __FUNCTION__, __LINE__, outHeader , (void *)(outHeader->pBuffer), outHeader->nOffset, outHeader->nFlags, outHeader->nTimeStamp);
 
 #if 0
     dump_yuv(data, mPictureSize);
@@ -712,7 +712,7 @@ void SoftSPRDAVC::onPortFlushCompleted(OMX_U32 portIndex) {
     }
 }
 
-void SoftSPRDAVC::onPortEnableCompleted(OMX_U32 portIndex, bool enabled) {
+void SoftSPRDAVC::onPortEnableCompleted(OMX_U32 /*portIndex*/, bool enabled) {
     switch (mOutputPortSettingsChange) {
     case NONE:
         break;
@@ -768,7 +768,7 @@ int SoftSPRDAVC::VSP_malloc_cb(unsigned int size_extra) {
     }
     mCodecExtraBuffer = (uint8 *)malloc(size_extra);
 
-    ALOGI("%s, %d, mPictureSize: %d, size_extra: %d, mCodecExtraBuffer: %0x",
+    ALOGI("%s, %d, mPictureSize: %d, size_extra: %d, mCodecExtraBuffer: %p",
           __FUNCTION__, __LINE__, mPictureSize, size_extra, mCodecExtraBuffer);
 
     if (mCodecExtraBuffer == NULL)

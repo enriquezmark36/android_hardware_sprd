@@ -21,7 +21,7 @@
 #include "SoftSPRDMPEG4.h"
 
 #include <media/stagefright/foundation/ADebug.h>
-#include <media/MediaDefs.h>
+#include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MediaErrors.h>
 #include <media/IOMX.h>
 
@@ -106,9 +106,8 @@ SoftSPRDMPEG4::SoftSPRDMPEG4(
       mSignalledError(false),
       mInitialized(false),
       mFramesConfigured(false),
-      mNumSamplesOutput(0),
-      mOutputPortSettingsChange(NONE),
       mStopDecode(false),
+      mNumSamplesOutput(0),
       mLibHandle(NULL),
       mNeedIVOP(true),
       mCodecInterBuffer(NULL),
@@ -120,7 +119,8 @@ SoftSPRDMPEG4::SoftSPRDMPEG4(
       mMP4DecDecode(NULL),
       mMP4DecRelease(NULL),
       mMp4GetVideoDimensions(NULL),
-      mMp4GetBufferDimensions(NULL) {
+      mMp4GetBufferDimensions(NULL),
+      mOutputPortSettingsChange(NONE) {
     if (!strcmp(name, "OMX.sprd.soft.h263.decoder")) {
         mMode = MODE_H263;
     } else {
@@ -299,7 +299,7 @@ OMX_ERRORTYPE SoftSPRDMPEG4::internalGetParameter(
             (OMX_VIDEO_PARAM_PROFILELEVELTYPE *) params;
 
         if (profileLevel->nPortIndex != 0) {  // Input port only
-            ALOGE("Invalid port index: %ld", profileLevel->nPortIndex);
+            ALOGE("Invalid port index: %u", profileLevel->nPortIndex);
             return OMX_ErrorUnsupportedIndex;
         }
 
@@ -442,7 +442,7 @@ OMX_ERRORTYPE SoftSPRDMPEG4::getConfig(
     }
 }
 
-void SoftSPRDMPEG4::onQueueFilled(OMX_U32 portIndex) {
+void SoftSPRDMPEG4::onQueueFilled(OMX_U32 /*portIndex*/) {
     if (mSignalledError || mOutputPortSettingsChange != NONE) {
         return;
     }
@@ -618,7 +618,7 @@ void SoftSPRDMPEG4::onQueueFilled(OMX_U32 portIndex) {
         int64_t start_decode = systemTime();
         MMDecRet decRet =	(*mMP4DecDecode)( mHandle, &dec_in,&dec_out);
         int64_t end_decode = systemTime();
-        ALOGI("%s, %d, decRet: %d, %dms, frameEffective: %d, pOutFrameY: %0x, pBufferHeader: %0x, needIVOP: %d",
+        ALOGI("%s, %d, decRet: %d, %dms, frameEffective: %d, pOutFrameY: %p, pBufferHeader: %p, needIVOP: %d",
               __FUNCTION__, __LINE__, decRet, (unsigned int)((end_decode-start_decode) / 1000000L),dec_out.frameEffective, dec_out.pOutFrameY, dec_out.pBufferHeader,mNeedIVOP);
 
         if (decRet == MMDEC_OK || decRet == MMDEC_MEMORY_ALLOCED )
@@ -660,7 +660,7 @@ void SoftSPRDMPEG4::onQueueFilled(OMX_U32 portIndex) {
         }
 
 
-        CHECK_LE(bufferSize, inHeader->nFilledLen);
+        CHECK_LE((uint32_t)bufferSize, (uint32_t)inHeader->nFilledLen);
         inHeader->nOffset += inHeader->nFilledLen - bufferSize;
         inHeader->nFilledLen -= bufferSize;
 
@@ -830,7 +830,7 @@ int SoftSPRDMPEG4::extMemoryAlloc(unsigned int extra_mem_size) {
 
     extra_mem[SW_CACHABLE].common_buffer_ptr = mCodecExtraBuffer;
     extra_mem[SW_CACHABLE].size = extra_mem_size;
-    ALOGI("%s, %d, ext_mem: %0x, ext_mem_size: %d",
+    ALOGI("%s, %d, ext_mem: %p, ext_mem_size: %d",
           __FUNCTION__, __LINE__, mCodecExtraBuffer, extra_mem_size);
 
     (*mMP4DecMemInit)( ((SoftSPRDMPEG4 *)this)->mHandle, extra_mem);

@@ -21,7 +21,7 @@
 #include "SPRDAVCDecoder.h"
 
 #include <media/stagefright/foundation/ADebug.h>
-#include <media/MediaDefs.h>
+#include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MediaErrors.h>
 #include <media/IOMX.h>
 
@@ -33,7 +33,7 @@
 
 #include <ui/Rect.h>
 #include "gralloc_priv.h"
-#include "ion_sprd.h"
+#include <video/ion_sprd.h>
 #include "avc_dec_api.h"
 
 //#define VIDEODEC_CURRENT_OPT  /*only open for SAMSUNG currently*/
@@ -622,7 +622,7 @@ void SPRDAVCDecoder::releaseDecoder() {
 
 OMX_ERRORTYPE SPRDAVCDecoder::internalGetParameter(
     OMX_INDEXTYPE index, OMX_PTR params) {
-    switch (index) {
+    switch ((int)index) {
     case OMX_IndexParamVideoPortFormat:
     {
         OMX_VIDEO_PARAM_PORTFORMATTYPE *formatParams =
@@ -756,7 +756,7 @@ OMX_ERRORTYPE SPRDAVCDecoder::internalGetParameter(
 
 OMX_ERRORTYPE SPRDAVCDecoder::internalSetParameter(
     OMX_INDEXTYPE index, const OMX_PTR params) {
-    switch (index) {
+    switch ((int)index) {
     case OMX_IndexParamStandardComponentRole:
     {
         const OMX_PARAM_COMPONENTROLETYPE *roleParams =
@@ -1054,7 +1054,11 @@ OMX_ERRORTYPE SPRDAVCDecoder::freeBuffer(
         BufferCtrlStruct* pBufCtrl= (BufferCtrlStruct*)(header->pOutputPortPrivate);
         if(pBufCtrl != NULL) {
             if(pBufCtrl->pMem != NULL) {
+#ifdef SOC_SCX35
+                ALOGI("freeBuffer, phyAddr: 0x%x", pBufCtrl->phyAddr);
+#else
                 ALOGI("freeBuffer, phyAddr: 0x%lx", pBufCtrl->phyAddr);
+#endif
                 if (mIOMMUEnabled) {
 #ifdef SOC_SCX35
                     pBufCtrl->pMem->free_mm_iova(pBufCtrl->phyAddr, pBufCtrl->bufferSize);
@@ -1108,7 +1112,7 @@ OMX_ERRORTYPE SPRDAVCDecoder::getConfig(
 
 OMX_ERRORTYPE SPRDAVCDecoder::setConfig(
     OMX_INDEXTYPE index, const OMX_PTR params) {
-    switch (index) {
+    switch ((int)index) {
     case OMX_IndexConfigThumbnailMode:
     {
         OMX_BOOL *pEnable = (OMX_BOOL *)params;
@@ -1154,7 +1158,7 @@ void SPRDAVCDecoder::dump_yuv(uint8 *pBuffer, int32 aInBufSize) {
     }
 }
 
-void SPRDAVCDecoder::onQueueFilled(OMX_U32 portIndex) {
+void SPRDAVCDecoder::onQueueFilled(OMX_U32 /*portIndex*/) {
     if (mSignalledError || mOutputPortSettingsChange != NONE) {
         return;
     }
@@ -1566,7 +1570,7 @@ bool SPRDAVCDecoder::handleCropRectEvent(const CropParams *crop) {
     return false;
 }
 
-void SPRDAVCDecoder::drainOneOutputBuffer(int32_t picId, void* pBufferHeader, uint64 pts) {
+void SPRDAVCDecoder::drainOneOutputBuffer(int32_t /*picId*/, void* pBufferHeader, uint64 pts) {
 
     List<BufferInfo *> &outQueue = getPortQueue(kOutputPortIndex);
 
@@ -1647,7 +1651,7 @@ void SPRDAVCDecoder::onPortFlushCompleted(OMX_U32 portIndex) {
     }
 }
 
-void SPRDAVCDecoder::onPortEnableCompleted(OMX_U32 portIndex, bool enabled) {
+void SPRDAVCDecoder::onPortEnableCompleted(OMX_U32 /*portIndex*/, bool enabled) {
     switch (mOutputPortSettingsChange) {
     case NONE:
         break;

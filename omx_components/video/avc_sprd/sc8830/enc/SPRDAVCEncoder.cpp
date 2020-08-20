@@ -21,7 +21,7 @@
 #include "avc_enc_api.h"
 
 #include <media/stagefright/foundation/ADebug.h>
-#include <media/MediaDefs.h>
+#include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MediaErrors.h>
 #include <media/stagefright/MetaData.h>
 #include <media/stagefright/Utils.h>
@@ -39,7 +39,7 @@
 #include "MemoryHeapIon.h"
 
 #include "SPRDAVCEncoder.h"
-#include "ion_sprd.h"
+#include <video/ion_sprd.h>
 #include "gralloc_priv.h"
 
 #define VIDEOENC_CURRENT_OPT
@@ -208,6 +208,7 @@ inline static void ConvertYUV420PlanarToYVU420SemiPlanar(uint8_t *inyuv, uint8_t
 
 
 
+#if 0
 static int RGB_r_y[256];
 static int RGB_r_cb[256];
 static int RGB_r_cr_b_cb[256];
@@ -238,7 +239,7 @@ inline static void inittable()
     }
 }
 inline static void ConvertARGB888ToYVU420SemiPlanar(uint8_t *inrgb, uint8_t* outy,uint8_t* outuv,
-        int32_t width_org, int32_t height_org, int32_t width_dst, int32_t height_dst) {
+        int32_t width_org, int32_t height_org, int32_t width_dst, int32_t /*height_dst*/) {
 #define RGB2Y(_r, _g, _b)    ((  *(RGB_r_y +_r)      +   *(RGB_g_y+_g)   +    *(RGB_b_y+_b)) >> 8) + 16;
 #define RGB2CB(_r, _g, _b)   (( -*(RGB_r_cb +_r)     -   *(RGB_g_cb+_g)  +    *(RGB_r_cr_b_cb+_b)) >> 8) + 128;
 #define RGB2CR(_r, _g, _b)   ((  *(RGB_r_cr_b_cb +_r)-   *(RGB_g_cr+_g)  -    *(RGB_b_cr+_b))>>8) + 128;
@@ -250,10 +251,10 @@ inline static void ConvertARGB888ToYVU420SemiPlanar(uint8_t *inrgb, uint8_t* out
     if (NULL == inrgb || NULL ==  outy || NULL == outuv)
         return;
 
-    if (height_org & 0x1 != 0)
+    if ((height_org & 0x1) != 0)
         height_org &= ~0x1;
 
-    if (width_org & 0x1 != 0) {
+    if ((width_org & 0x1) != 0) {
         ALOGE("width_org:%d is not supported", width_org);
         return;
     }
@@ -297,7 +298,7 @@ inline static void ConvertARGB888ToYVU420SemiPlanar(uint8_t *inrgb, uint8_t* out
     int64_t end_encode = systemTime();
     ALOGI("rgb2yuv time: %d",(unsigned int)((end_encode-start_encode) / 1000000L));
 }
-
+#endif
 /*this is neon assemble function.It is need width_org align in 16Bytes.height_org align in 2Bytes*/
 /*in cpu not busy status,it deal with 1280*720 rgb data in 5-6ms */
 extern "C" void neon_intrinsics_ARGB888ToYVU420Semi(uint8_t *inrgb, uint8_t* outy,uint8_t* outuv,
@@ -307,13 +308,11 @@ extern "C" void neon_intrinsics_ARGB888ToYVU420Semi(uint8_t *inrgb, uint8_t* out
 /*like ConvertARGB888ToYVU420SemiPlanar function parameters requirement*/
 /*in cpu not busy status,it deal with 1280*720 rgb data in 5-6ms */
 void neon_intrinsics_ARGB888ToYVU420Semi_c(uint8_t *inrgb, uint8_t* outy,uint8_t* outuv,
-                    int32_t width_org, int32_t height_org, int32_t width_dst, int32_t height_dst){
+                    int32_t width_org, int32_t height_org, int32_t width_dst, int32_t /*height_dst*/){
    int32_t i, j;
    uint8_t *argb_ptr = inrgb;
    uint8_t *y_ptr = outy;
-   uint8_t *temp_y_ptr = y_ptr;
    uint8_t *uv_ptr = outuv;
-   uint8_t *argb_tmpptr ;
    uint8x8_t r1fac = vdup_n_u8(66);
    uint8x8_t g1fac = vdup_n_u8(129);
    uint8x8_t b1fac = vdup_n_u8(25);
@@ -337,9 +336,6 @@ void neon_intrinsics_ARGB888ToYVU420Semi_c(uint8_t *inrgb, uint8_t* outy,uint8_t
    {
       for (j=(width_org>>3); j>0; j--)   ///// col
       {
-          uint8 y, cb, cr;
-          int8 r, g, b;
-          uint8 p_r[16],p_g[16],p_b[16];
           uint16x8_t temp;
           uint8x8_t result;
           uint8x8x2_t result_uv;
@@ -514,22 +510,17 @@ void neon_intrinsics_ARGB888ToYVU420Semi(uint8_t *inrgb, uint8_t* outy,uint8_t* 
 
 inline static void ConvertARGB888ToYVU420SemiPlanar_neon(uint8_t *inrgb, uint8_t* outy,uint8_t* outuv,
                     int32_t width_org, int32_t height_org, int32_t width_dst, int32_t height_dst) {
-#define RGB2Y(_r, _g, _b) (((66 * (_r) + 129 * (_g) + 25 * (_b)) >> 8) + 16)
-#define RGB2CB(_r, _g, _b) (((-38 * (_r) - 74 * (_g) + 112 * (_b)) >> 8) + 128)
-#define RGB2CR(_r, _g, _b) (((112 * (_r) - 94 * (_g) - 18 * (_b)) >> 8) + 128)
     //ALOGI("RGB DATA:%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x-%x",inrgb[0],inrgb[1],inrgb[2],inrgb[3],inrgb[4],inrgb[5],inrgb[6],inrgb[7],inrgb[8],inrgb[9],inrgb[10],inrgb[11],inrgb[12],inrgb[13],inrgb[14],inrgb[15]);
-    uint32_t i, j;
-    uint32_t *argb_ptr = (uint32_t *)inrgb;
     uint8_t *y_ptr = outy;
     uint8_t *vu_ptr = outuv;
 
     if (NULL == inrgb || NULL == outuv || NULL==outy)
         return;
 
-    if (height_org & 0x1 != 0)
+    if ((height_org & 0x1) != 0)
         height_org &= ~0x1;
 
-    if (width_org & 0x1 != 0) {
+    if ((width_org & 0x1) != 0) {
         ALOGE("width_org:%d is not supported", width_org);
         return;
     }
@@ -570,12 +561,12 @@ SPRDAVCEncoder::SPRDAVCEncoder(
       mNumInputFrames(-1),
       mPrevTimestampUs(-1),
       mSetFreqCount(0),
+      mBitrate(0),
+      mEncSceneMode(0),
       mVideoWidth(176),
       mVideoHeight(144),
       mVideoFrameRate(30),
       mVideoBitRate(192000),
-      mBitrate(0),
-      mEncSceneMode(0),
       mVideoColorFormat(OMX_COLOR_FormatYUV420SemiPlanar),
       mStoreMetaData(OMX_FALSE),
       mPrependSPSPPS(OMX_FALSE),
@@ -1062,7 +1053,7 @@ void SPRDAVCEncoder::initPorts() {
 
 OMX_ERRORTYPE SPRDAVCEncoder::internalGetParameter(
     OMX_INDEXTYPE index, OMX_PTR params) {
-    switch (index) {
+    switch ((int)index) {
     case OMX_IndexParamVideoErrorCorrection:
     {
         return OMX_ErrorNotImplemented;
@@ -1300,7 +1291,7 @@ OMX_ERRORTYPE SPRDAVCEncoder::internalGetParameter(
 
 OMX_ERRORTYPE SPRDAVCEncoder::internalSetParameter(
     OMX_INDEXTYPE index, const OMX_PTR params) {
-    switch (index) {
+    switch ((int)index) {
     case OMX_IndexParamVideoErrorCorrection:
     {
         return OMX_ErrorNotImplemented;
@@ -1492,7 +1483,7 @@ OMX_ERRORTYPE SPRDAVCEncoder::internalSetParameter(
 
 OMX_ERRORTYPE SPRDAVCEncoder::setConfig(
     OMX_INDEXTYPE index, const OMX_PTR params) {
-    switch (index) {
+    switch ((int)index) {
         case OMX_IndexConfigVideoIntraVOPRefresh:
         {
             OMX_CONFIG_INTRAREFRESHVOPTYPE *pConfigIntraRefreshVOP =
@@ -1548,7 +1539,7 @@ OMX_ERRORTYPE SPRDAVCEncoder::getExtensionIndex(
     return SprdSimpleOMXComponent::getExtensionIndex(name, index);
 }
 
-void SPRDAVCEncoder::onQueueFilled(OMX_U32 portIndex) {
+void SPRDAVCEncoder::onQueueFilled(OMX_U32 /*portIndex*/) {
     if (mSignalledError || mSawInputEOS) {
         return;
     }

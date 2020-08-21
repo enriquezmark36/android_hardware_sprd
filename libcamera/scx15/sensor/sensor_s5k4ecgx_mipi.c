@@ -94,6 +94,7 @@ LOCAL uint32_t s_white_balance = 0;
 // Local copy of Flash state (copied from the global context)
 LOCAL uint8_t  s_flash_state = 0; // flash state in the global context
 LOCAL uint32_t s_torch_mode_en = 0;
+LOCAL uint8_t  s_flash_alg_en = 0;
 
 LOCAL uint8_t s_fast_ae_en = 0;
 LOCAL uint8_t s_stream_is_on = 0;
@@ -1357,9 +1358,11 @@ LOCAL uint32_t _s5k4ec_after_snapshot(uint32_t param)
 	SENSOR_PRINT_HIGH("=========sonia SENSOR: _s5k4ec_after_snapshot %u",param);
 	uint16_t width = 0, height = 0;
 
-	// Revert reg settings regarding flash and disable non Highlight flash
-	if (FLASH_CLOSE != s_flash_state)
+	// Turn off the internal flash algorithm (primarily tweaks the exposure time)
+	if (s_flash_alg_en) {
 		s5k4ec_main_flash(0);
+		s_flash_alg_en = 0;
+	}
 
 	if (s_torch_mode_en) {
 		s_torch_mode_en = 0;
@@ -2068,6 +2071,7 @@ LOCAL uint32_t _s5k4ec_StreamOff(__attribute__((unused)) uint32_t param)
 		}
 	} else if ((FLASH_CLOSE != s_flash_state) && s_stream_is_on) {
 		s5k4ec_main_flash(1);
+		s_flash_alg_en = 1;
 	}
 
 	/*

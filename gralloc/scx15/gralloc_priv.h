@@ -204,7 +204,14 @@ struct private_handle_t
 	int     fd;
 	int     offset;
 
+#ifdef HIDL_SAVE_FB_BASE
+	union {
+		int fb_base;
+		int phyaddr;
+	};
+#else
 	int     phyaddr;
+#endif
 
 #if SPRD_ION
 	int     resv0;

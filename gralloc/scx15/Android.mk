@@ -82,6 +82,14 @@ LOCAL_CFLAGS += -DHIDL_INVALID_FD
 # Prevent HIDL from "freeing" FB memory at all.
 # Pun intended.
 LOCAL_CFLAGS += -DHIDL_NO_FREE_FB
+
+# Repurposes the "unused" phy_addr struct member in private_handle_t
+# to store the base virtual address of the framebuffer.
+# This is intended to increase resilency on cases where there's two gralloc
+# instances and an FB buffer handle is passed between the two.
+# IN this case, fb_post() will never work in one of the instance.
+# CAUTION: May break devices that use phy_addr.
+LOCAL_CFLAGS += -DHIDL_SAVE_FB_BASE
 endif
 
 ##

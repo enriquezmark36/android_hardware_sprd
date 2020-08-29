@@ -304,7 +304,11 @@ static int fb_post(struct framebuffer_device_t* dev, buffer_handle_t buffer)
 		m->base.lock(&m->base, buffer, private_module_t::PRIV_USAGE_LOCKED_FOR_POST,
 		             0, 0, m->info.xres, m->info.yres, NULL);
 
+#ifdef HIDL_SAVE_FB_BASE
+		const size_t offset = hnd->base - hnd->fb_base;
+#else
 		const size_t offset = hnd->base - m->framebuffer->base;
+#endif
 		m->info.activate = FB_ACTIVATE_VBL;
 		m->info.yoffset = offset / m->finfo.line_length;
 

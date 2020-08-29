@@ -508,6 +508,10 @@ static int gralloc_alloc_framebuffer_locked(alloc_device_t* dev, size_t size, in
 	// The entire framebuffer memory is already mapped, now create a buffer object for parts of this memory
 	private_handle_t* hnd = new private_handle_t(private_handle_t::PRIV_FLAGS_FRAMEBUFFER, usage, size, vaddr,
 												 0, dup(m->framebuffer->fd), vaddr - m->framebuffer->base);
+#ifdef HIDL_SAVE_FB_BASE
+	hnd->fb_base = m->framebuffer->base;
+#endif
+
 #if GRALLOC_ARM_UMP_MODULE
 	hnd->ump_id = m->framebuffer->ump_id;
 	/* create a backing ump memory handle if the framebuffer is exposed as a secure ID */

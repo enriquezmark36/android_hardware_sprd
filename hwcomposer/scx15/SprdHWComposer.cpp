@@ -611,6 +611,9 @@ static int hwc_device_open(const struct hw_module_t* module, const char* name, s
     HWC->hwc_composer_device_1_t::dump = hwc_dump;
     HWC->hwc_composer_device_1_t::getDisplayConfigs = hwc_getDisplayConfigs;
     HWC->hwc_composer_device_1_t::getDisplayAttributes = hwc_getDisplayAttributes;
+    HWC->hwc_composer_device_1_t::getActiveConfig = nullptr;
+    HWC->hwc_composer_device_1_t::setActiveConfig = nullptr;
+    HWC->hwc_composer_device_1_t::setCursorPositionAsync = nullptr;
 
     *device = &HWC->hwc_composer_device_1_t::common;
 

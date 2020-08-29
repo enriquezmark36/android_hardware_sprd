@@ -328,21 +328,20 @@ int SprdHWComposer:: getDisplayAttributes(int disp, uint32_t /*config*/, const u
         return -1;
     }
 
-    static const uint32_t DISPLAY_ATTRIBUTES[] = {
-        HWC_DISPLAY_VSYNC_PERIOD,
-        HWC_DISPLAY_WIDTH,
-        HWC_DISPLAY_HEIGHT,
-        HWC_DISPLAY_DPI_X,
-        HWC_DISPLAY_DPI_Y,
-        HWC_DISPLAY_NO_ATTRIBUTE,
-    };
-
-    const int NUM_DISPLAY_ATTRIBUTES = sizeof(DISPLAY_ATTRIBUTES) / (sizeof(DISPLAY_ATTRIBUTES[0]));
+    // Maximum total number of attributes we'll check to avoid cases
+    // where HWC_DISPLAY_NO_ATTRIBUTE is no where to be found on the list.
+    const int LIMIT_DISPLAY_ATTRIBUTES = 16;
 
     DisplayAttributes *dpyAttr = &(mDisplayAttributes[disp]);
 
-    for (int i = 0; i < NUM_DISPLAY_ATTRIBUTES -1; i++)
+    for (int i = 0; i < LIMIT_DISPLAY_ATTRIBUTES; i++)
     {
+        if (HWC_DISPLAY_NO_ATTRIBUTE == attributes[i])
+            break;
+
+        if (i == (LIMIT_DISPLAY_ATTRIBUTES - 1))
+            ALOGW("%s: Reached the scan limit but HWC_DISPLAY_NO_ATTRIBUTE still not found", __func__);
+
         switch(attributes[i])
         {
             case HWC_DISPLAY_VSYNC_PERIOD:

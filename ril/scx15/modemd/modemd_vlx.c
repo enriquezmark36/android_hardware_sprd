@@ -167,7 +167,7 @@ int check_proc_file(char *file, char *string)
 
 int loadimage(char *fin, int offsetin, char *fout, int offsetout, int size)
 {
-	int res = -1, fdin, fdout, bufsize, i, rsize, rrsize, wsize;
+	int res = -1, fdin, fdout, i, rsize, rrsize, wsize;
 	char buf[8192];
 	int buf_size = sizeof(buf);
 #ifdef TEST_MODEM
@@ -448,7 +448,6 @@ void get_mtd_partition(char *buf, char *name, char *mtdpath)
 
 int vlx_reboot_init(void)
 {
-	char *mtdbuf = NULL;
 	int ret;
 
 	ret = pthread_mutex_init(&reset_mutex, NULL);
@@ -577,6 +576,7 @@ void *vlx_reset_thread(void *par)
 	char cmdrst[2]={'z',0x0a};
 	char prop[256] = {0};
 	int is_reset = 0;
+	(void) par;
 
 	memset(prop, 0, sizeof(prop));
 	property_get(MODEMRESET_PROPERTY, prop, "0");

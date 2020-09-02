@@ -404,6 +404,7 @@ static void *modemd_listenaccept_thread(void *par)
 {
 	int sfd, n, i;
 
+	(void) par;
 	for(i=0; i<MAX_CLIENT_NUM; i++)
 		client_fd[i]=-1;
 
@@ -490,6 +491,7 @@ static void *modemd_engcontrol_listen(void *par)
 	char prop[256];
       struct timeval tv;
       MODEMD_LOGD("%s:  enter",	__FUNCTION__);
+	(void) par;
 	for(;;)
 	{
 	       FD_ZERO(&engpcFds);
@@ -544,7 +546,7 @@ static void *modemd_engcontrol_listen(void *par)
 						}
 						else
 						{
-						     MODEMD_LOGD("%s:error not prop set%s ",__FUNCTION__);
+						     MODEMD_LOGD("%s:error not prop set",__FUNCTION__);
 						}
 						memset(prop,'\0',256);
 						break;
@@ -561,6 +563,8 @@ static void *modemd_engcontrol_thread(void *par)
 {
 	int sfd, n, i;
 	pthread_t tid;
+
+	(void) par;
 	for(i=0; i<MAX_CLIENT_NUM; i++)
 		engpc_client_fd[i]=-1;
       if(pipe(notifypipe) < 0)
@@ -606,7 +610,7 @@ static void *modemd_engcontrol_thread(void *par)
 
 static void start_modem(int *para)
 {
-	pthread_t tid1, tid2, tid3, tid4, tid5;
+	pthread_t tid1, tid2, tid3, tid4;
 	int modem = -1;
 	char prop[256];
 	char modem_enable[256];
@@ -668,6 +672,9 @@ int main(int argc, char *argv[])
 	int ret;
 	int modem_td = TD_MODEM;
 	int modem_w = W_MODEM;
+
+	(void) argc;
+	(void) argv;
 
 	memset(&action, 0x00, sizeof(action));
 	action.sa_handler = SIG_IGN;

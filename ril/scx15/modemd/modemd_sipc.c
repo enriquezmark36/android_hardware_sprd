@@ -52,7 +52,7 @@ static int loop_info_sockclients(const char* buf, const int len)
 
 static int load_sipc_image(char *fin, int offsetin, char *fout, int offsetout, int size)
 {
-	int res = -1, fdin, fdout, bufsize, i, rsize, rrsize, wsize;
+	int res = -1, fdin, fdout, i, rsize, rrsize, wsize;
 	char buf[8192];
 	int buf_size = sizeof(buf);
 
@@ -115,7 +115,6 @@ static int load_sipc_modem_img(int modem, int is_modem_assert)
 	int sipc_modem_size = 0;
 	int sipc_dsp_size = 0;
 	char alive_info[20]={0};
-	int i, ret;
 	char path[256];
 
 	memset(path, 0, sizeof(path));
@@ -183,14 +182,14 @@ static int load_sipc_modem_img(int modem, int is_modem_assert)
       if (wakealarm_fd < 0)
           wakealarm_fd = timerfd_create(CLOCK_BOOTTIME_ALARM, TFD_NONBLOCK);
       if (wakealarm_fd == -1) {
-          MODEMD_LOGE(LOG_TAG, "wakealarm_init: timerfd_create failed\n");
+          MODEMD_LOGE("wakealarm_init: timerfd_create failed\n");
           return -1;
       }
       if(epollfd < 0)
       {
           epollfd = epoll_create(1);
           if (epollfd == -1) {
-                  MODEMD_LOGE(LOG_TAG,
+                  MODEMD_LOGE(
                   "healthd_mainloop: epoll_create failed; errno=%d\n",
                   errno);
               return -1;
@@ -198,7 +197,7 @@ static int load_sipc_modem_img(int modem, int is_modem_assert)
           ev.events = EPOLLIN | EPOLLWAKEUP;
           if (epoll_ctl(epollfd, EPOLL_CTL_ADD, wakealarm_fd, &ev) == -1)
           {
-              MODEMD_LOGD(LOG_TAG,
+              MODEMD_LOGD(
               "load_sipc_modem_img: epoll_ctl for wakealarm_fd failed; errno=%d\n",
               errno);
               return -1;
@@ -209,14 +208,14 @@ static int load_sipc_modem_img(int modem, int is_modem_assert)
       itval.it_value.tv_sec = 20;
       itval.it_value.tv_nsec = 0;
       if (timerfd_settime(wakealarm_fd, 0, &itval, NULL) == -1){
-          MODEMD_LOGE(LOG_TAG, "load_sipc_modem_img: timerfd_settime failed\n");
+          MODEMD_LOGE("load_sipc_modem_img: timerfd_settime failed\n");
       }
       do {
           nevents = epoll_wait(epollfd, events, 1, -1);
           if (nevents == -1) {
               if (errno == EINTR)
               continue;
-              MODEMD_LOGE(LOG_TAG, "load_sipc_modem_img: epoll_wait failed\n");
+              MODEMD_LOGE("load_sipc_modem_img: epoll_wait failed\n");
               break;
           }
          break ;
@@ -247,7 +246,7 @@ static int load_sipc_modem_img(int modem, int is_modem_assert)
 
 void *detect_modem_blocked(void *par)
 {
-	int soc_fd, i, ret;
+	int soc_fd, ret;
 	int modem, numRead, loop_fd;
 	char socket_name[256] = {0}, loop_dev[256] = {0};
 	char prop[256], buf[256], buffer[256];
@@ -394,7 +393,7 @@ void* detect_sipc_modem(void *param)
 {
 	char assert_dev[256] = {0};
 	char watchdog_dev[256] = {0};
-	int i, ret, assert_fd, watchdog_fd, max_fd, fd = -1;
+	int ret, assert_fd, watchdog_fd, max_fd, fd = -1;
 	fd_set rfds;
 	int is_reset, modem = -1;
 	char buf[256], prop[256];

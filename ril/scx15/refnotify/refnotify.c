@@ -17,6 +17,7 @@
 #include <time.h>
 #include <sys/reboot.h>
 #include <linux/rtc.h>
+#include <linux/reboot.h>
 
 #define REF_DEBUG
 
@@ -68,6 +69,8 @@ struct refnotify_cmd {
     uint32_t length;
 };
 
+extern int __reboot(int, int, int, void*);
+
 static void usage(void)
 {
     fprintf(stderr,
@@ -79,6 +82,7 @@ static void usage(void)
 
 void RefNotify_DoAutodloader(struct refnotify_cmd *pcmd)
 {
+    (void) pcmd;
     sync();
     __reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2,
             LINUX_REBOOT_CMD_RESTART2, "autodloader");
@@ -86,6 +90,7 @@ void RefNotify_DoAutodloader(struct refnotify_cmd *pcmd)
 
 void RefNotify_DoReset(struct refnotify_cmd *pcmd)
 {
+    (void) pcmd;
     sync();
     __reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2,
             LINUX_REBOOT_CMD_RESTART2, "normal");
@@ -125,6 +130,7 @@ void RefNotify_DoGetTime(int fd, struct refnotify_cmd *cmd)
     struct tm timenow;
     struct ref_time *ptime = NULL;
     struct refnotify_cmd *pcmd = NULL;
+    (void) cmd;
     if(RefNotify_rtc_readtm(&timenow) < 0) {
         REF_LOGE("error to get rtc time \n");
         return;
@@ -151,6 +157,7 @@ void RefNotify_DoGetDate(int fd, struct refnotify_cmd *cmd)
     struct tm timenow;
     struct ref_date *pDate = NULL;
     struct refnotify_cmd *pcmd = NULL;
+    (void) cmd;
 
     if(RefNotify_rtc_readtm(&timenow) < 0) {
         REF_LOGE("error to get rtc time \n");
@@ -176,7 +183,6 @@ void RefNotify_DoGetDate(int fd, struct refnotify_cmd *cmd)
 
 static int RefNotify_DoSetTime(struct refnotify_cmd *pcmd)
 {
-    int ret;
     time_t timer;
     struct timeval tv;
     struct tm timenow;
@@ -208,7 +214,6 @@ static int RefNotify_DoSetTime(struct refnotify_cmd *pcmd)
 
 static int RefNotify_DoSetDate(struct refnotify_cmd *pcmd)
 {
-    int ret;
     time_t timer;
     struct timeval tv;
     struct tm timenow;

@@ -361,8 +361,8 @@ int MemoryHeapIon::flush_ion_buffer(void *v_addr, void *p_addr,int size){
         struct ion_custom_data  custom_data;
 
         if ((v_addr<MemoryHeapBase::getBase())  ||  (((char *)v_addr)+size>((char *)MemoryHeapBase::getBase())+MemoryHeapBase::getSize())){
-             ALOGE("flush_ion_buffer error  mBase=0x%x,mSize=0x%x",MemoryHeapBase::getBase(), MemoryHeapBase::getSize());
-             ALOGE("flush_ion_buffer error  v_addr=0x%x,p_addr=0x%x,size=0x%x",v_addr,p_addr,size);
+             ALOGE("flush_ion_buffer error  mBase=%p,mSize=0x%x",MemoryHeapBase::getBase(), MemoryHeapBase::getSize());
+             ALOGE("flush_ion_buffer error  v_addr=%p,p_addr=%p,size=0x%x",v_addr,p_addr,size);
              return -3;
         }
         msync_data.fd_buffer = MemoryHeapBase::getHeapID();
@@ -420,7 +420,7 @@ status_t MemoryHeapIon::mapIonFd(int fd, size_t size, unsigned long memory_type,
     /* If size is 0, just fail the mmap. There is no way to get the size
      * with ion
      */
-    int map_fd;
+    //int map_fd;
 
     struct ion_allocation_data data;
     struct ion_fd_data fd_data;

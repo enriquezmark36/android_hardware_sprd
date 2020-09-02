@@ -20,6 +20,7 @@
 
 static void *pSaveTask(void* ptr)
 {
+	(void) ptr;
 	do
 	{
 		waiteEvent();
@@ -50,7 +51,6 @@ int main(int argc, char *argv[])
 	char nvp[50];
 	char path_char[95];
 	char channel_char[50];
-	uint32 test = 0;
 	if(3 != argc)
 	{
 		NVITEM_PRINT("Usage:\n");

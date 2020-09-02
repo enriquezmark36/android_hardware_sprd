@@ -34,6 +34,8 @@ static uint8*			_packetRspBody;
 
 static uint32 __makeEcc(uint8* buf, uint32 len)
 {
+	(void) buf;
+	(void) len;
 	return 0;
 }
 
@@ -62,6 +64,9 @@ void __sendPacketRsp(PACKET_HEAD* header, uint8 rsp)
 
 static BOOLEAN __chkEcc(uint8* buf, uint32 len, uint32 ecc)
 {
+	(void) buf;
+	(void) len;
+	(void) ecc;
 	return 1;
 }
 

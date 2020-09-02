@@ -12,10 +12,6 @@ char channel_path[95];
 
 void channel_open(void)
 {
-	int fd = -1;
-	char cmd[64];
-	int timeout=0;
-
 	do
 	{
 		channel_fd = open( channel_path, O_RDWR);
@@ -44,6 +40,7 @@ BOOLEAN channel_read(uint8* buf, uint32 size, uint32* hasRead)
 
 BOOLEAN channel_write(uint8* buf, uint32 size, uint32* hasWrite)
 {
+	(void) hasWrite;
 	write(channel_fd,buf,size);
 	return 1;
 }
